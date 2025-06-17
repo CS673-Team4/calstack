@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Join Team</title>
+</head>
+<body>
+    <h1>Join a Team</h1>
+    {% if error %}<p style="color:red;">{{ error }}</p>{% endif %}
+    <form method="post">
+        <label>Team Code:<br><input type="text" name="team_code" required></label><br><br>
+        <button type="submit">Join Team</button>
+    </form>
+    <a href="{{ url_for('home') }}">Back to Home</a>
+</body>
+</html>

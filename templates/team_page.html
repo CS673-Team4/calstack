@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{{ team.name }} - Team Page</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .profile-img {
+            width: 80px;
+            height: 80px;
+            object-fit: cover;
+            border-radius: 50%;
+            border: 2px solid #888;
+        }
+        .avatar-row {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+        .avatar {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 2px solid #bbb;
+            cursor: pointer;
+        }
+        .avatar.selected {
+            border: 3px solid #007bff;
+        }
+        .calendar-cell {
+            width: 36px;
+            height: 36px;
+            display: inline-block;
+            margin: 2px;
+            border-radius: 6px;
+            background: #e0e0e0;
+            text-align: center;
+            line-height: 36px;
+        }
+        .calendar-cell.busy {
+            background: #ff6961;
+            color: #fff;
+        }
+    </style>
+</head>
+<body class="bg-light">
+<div class="container-fluid py-4">
+    <div class="row">
+        <!-- Left Panel -->
+        <div class="col-md-4 bg-white rounded shadow-sm p-4 mb-3">
+            <div class="d-flex flex-column align-items-center">
+                <img src="https://ui-avatars.com/api/?name={{ selected_member or user_email }}" class="profile-img mb-2" id="profile-img">
+                <h5 id="profile-name">{{ selected_member or user_email }}</h5>
+            </div>
+            <hr>
+            <h6 class="text-center">Availability (next 7 days)</h6>
+            <div class="mb-2">
+                <span class="badge bg-danger">Busy</span>
+                <span class="badge bg-light border ms-2">Free</span>
+            </div>
+            <div id="calendar-view" class="table-responsive">
+                <!-- Calendar table will be rendered here by JS -->
+            </div>
+        </div>
+        <!-- Right Panel -->
+        <div class="col-md-8">
+            <div class="d-flex flex-column h-100">
+                <div class="d-flex align-items-center mb-3">
+                    <h3 class="me-auto">{{ team.name }}</h3>
+                    <span class="badge bg-secondary">Invite Code: {{ team.code }}</span>
+                </div>
+                <div class="avatar-row mb-4">
+                    {% for member in members %}
+                        <img src="https://ui-avatars.com/api/?name={{ member }}" class="avatar{% if member == user_email %} selected{% endif %}" data-email="{{ member }}" title="{{ member }}">
+                    {% endfor %}
+                </div>
+                <button class="btn btn-primary mb-3" id="schedule-meeting-btn">Schedule Meeting</button>
+<!-- Schedule Meeting Modal -->
+<div class="modal fade" id="scheduleMeetingModal" tabindex="-1" aria-labelledby="scheduleMeetingModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="scheduleMeetingModalLabel">Suggested Meeting Times</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div id="suggested-slots-list">
+          <div class="text-center text-muted">Loading suggestions...</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="p-3 bg-white rounded shadow-sm mb-3">
+                            <h5>Upcoming Meetings</h5>
+                            <div class="text-muted">(Coming soon)</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="p-3 bg-white rounded shadow-sm mb-3">
+                            <h5>Upcoming Voting</h5>
+                            <div class="text-muted">(Coming soon)</div>
+                        </div>
+                    </div>
+                </div>
+                <a href="{{ url_for('home') }}" class="mt-auto">Back to Home</a>
+            </div>
+        </div>
+    </div>
+</div>
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/luxon@3.4.3/build/global/luxon.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    // Helper: get busy blocks for 7 days, render as table
+function renderCalendar(busy) {
+    // Use luxon for timezone-safe conversion
+    const { DateTime, Interval } = luxon;
+    const tz = 'America/New_York';
+    // Start from today in Eastern Time
+    const start = DateTime.now().setZone(tz).startOf('day');
+    const days = [];
+    const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    for (let i = 0; i < 7; i++) {
+        days.push(start.plus({ days: i }));
+    }
+    // Convert busy blocks to Eastern Time intervals
+    const busyIntervals = busy.map(b => Interval.fromDateTimes(
+        DateTime.fromISO(b.start, { zone: 'utc' }).setZone(tz),
+        DateTime.fromISO(b.end, { zone: 'utc' }).setZone(tz)
+    ));
+    // Build table
+    let html = '<table class="table table-bordered text-center align-middle mb-0"><thead><tr><th style="width:70px">Hour</th>';
+    days.forEach(day => {
+        html += `<th><div>${dayNames[day.weekday % 7]}</div><div class='small text-muted'>${day.toISODate()}</div></th>`;
+    });
+    html += '</tr></thead><tbody>';
+    // 8am-8pm, 1hr blocks
+    for (let h = 8; h <= 20; h++) {
+        html += `<tr><th scope="row">${h}:00</th>`;
+        days.forEach(day => {
+            // Cell interval in ET
+            const blockStart = day.set({ hour: h, minute: 0, second: 0, millisecond: 0 });
+            const blockEnd = blockStart.plus({ hours: 1 });
+            // Is this block busy?
+            let isBusy = busyIntervals.some(intv => intv.overlaps(Interval.fromDateTimes(blockStart, blockEnd)));
+            html += `<td class="${isBusy ? 'bg-danger text-white' : ''}">${isBusy ? '<span title="Busy">●</span>' : ''}</td>`;
+        });
+        html += '</tr>';
+    }
+    html += '</tbody></table>';
+    $('#calendar-view').html(html);
+}
+    // Initial render
+    renderCalendar({{ busy|tojson }});
+
+    // Schedule Meeting button handler
+    $('#schedule-meeting-btn').click(function() {
+        // Show modal
+        const modal = new bootstrap.Modal(document.getElementById('scheduleMeetingModal'));
+        $('#suggested-slots-list').html('<div class="text-center text-muted">Loading suggestions...</div>');
+        modal.show();
+        // Fetch suggested slots
+        $.getJSON('{{ url_for("suggest_slots", team_id=team._id) }}', function(data) {
+            if (data.suggested_slots && data.suggested_slots.length > 0) {
+                let html = '<ul class="list-group">';
+                data.suggested_slots.forEach(slot => {
+                    // Show as local time
+                    const start = luxon.DateTime.fromISO(slot.start).toLocal();
+                    const end = luxon.DateTime.fromISO(slot.end).toLocal();
+                    html += `<li class="list-group-item">${start.toFormat('cccc, LLL dd, t')} – ${end.toFormat('t')}</li>`;
+                });
+                html += '</ul>';
+                $('#suggested-slots-list').html(html);
+            } else {
+                $('#suggested-slots-list').html('<div class="alert alert-warning">No mutually available times found for your team in the next 7 days.</div>');
+            }
+        }).fail(function() {
+            $('#suggested-slots-list').html('<div class="alert alert-danger">Failed to load suggestions.</div>');
+        });
+    });
+
+    // Member avatar click handler
+    $('.avatar').click(function() {
+        var email = $(this).data('email');
+        $('.avatar').removeClass('selected');
+        $(this).addClass('selected');
+        // Update profile
+        $('#profile-img').attr('src', 'https://ui-avatars.com/api/?name=' + email);
+        $('#profile-name').text(email);
+        // Fetch calendar
+        $.getJSON('{{ url_for("get_member_availability", team_id=team._id, email="__EMAIL__") }}'.replace('__EMAIL__', email), function(data) {
+            renderCalendar(data.busy);
+        });
+    });
+</script>
+</body>
+</html>

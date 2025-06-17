@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Create Team</title>
+</head>
+<body>
+    <h1>Create a New Team</h1>
+    <form method="post">
+        <label>Team Name:<br><input type="text" name="team_name" required></label><br><br>
+        <label>Invite Members (comma-separated emails):<br>
+            <input type="text" name="invited_emails" placeholder="email1@example.com, email2@example.com">
+        </label><br><br>
+        <button type="submit">Create Team</button>
+    </form>
+    <a href="{{ url_for('home') }}">Back to Home</a>
+</body>
+</html>
