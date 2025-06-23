@@ -75,25 +75,160 @@
                     {% endfor %}
                 </div>
                 <button class="btn btn-primary mb-3" id="schedule-meeting-btn">Schedule Meeting</button>
-<!-- Schedule Meeting Modal -->
+<!-- Schedule Meeting Modal (Multi-step) -->
 <div class="modal fade" id="scheduleMeetingModal" tabindex="-1" aria-labelledby="scheduleMeetingModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title" id="scheduleMeetingModalLabel">Suggested Meeting Times</h5>
+        <h5 class="modal-title" id="scheduleMeetingModalLabel">Schedule Meeting</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
-        <div id="suggested-slots-list">
-          <div class="text-center text-muted">Loading suggestions...</div>
+        <!-- Step 1: Participant & Filter Selection -->
+        <div id="schedule-step-1">
+          <h6>Select Participants</h6>
+          <div id="participant-checkboxes" class="mb-3"></div>
+          <h6>Filter</h6>
+          <div class="mb-2">
+            <label>Days of Week:</label><br>
+            <div id="days-checkboxes" class="mb-2"></div>
+          </div>
+          <div class="mb-2">
+            <label>Duration:</label>
+            <select id="meeting-duration" class="form-select w-auto d-inline-block ms-2">
+              <option value="30">30 min</option>
+              <option value="60" selected>1 hour</option>
+              <option value="90">1.5 hours</option>
+              <option value="120">2 hours</option>
+            </select>
+          </div>
+          <div class="mb-2">
+            <label for="hours-range">Hours Considered:</label>
+            <input type="range" class="form-range" min="6" max="22" step="1" id="hours-range" value="18">
+            <span id="hours-range-label">6:00 - 18:00</span>
+          </div>
+          <button class="btn btn-primary mt-2" id="meeting-next-btn">Next</button>
         </div>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        <!-- Step 2: Suggested Times Selection -->
+        <div id="schedule-step-2" style="display:none;">
+          <h6>Recommended Meeting Times</h6>
+          <form id="suggested-times-form">
+            <div id="suggested-times-list" class="mb-3"></div>
+            <button class="btn btn-primary" id="create-voting-btn" type="submit">Create Voting</button>
+          </form>
+          <button class="btn btn-secondary mt-2" id="meeting-back-btn">Back</button>
+        </div>
+        <!-- Step 3: Voting UI placeholder -->
+        <div id="schedule-step-3" style="display:none;">
+          <h6>Voting Created!</h6>
+          <div class="alert alert-info">Voting has been created and will appear in the Upcoming Voting section.</div>
+        </div>
       </div>
     </div>
   </div>
 </div>
+<script>
+// Populate participant checkboxes
+function renderParticipants(members, user_email) {
+  let html = '';
+  members.forEach(m => {
+    html += `<label class='me-2'><input type='checkbox' name='participants' value='${m}' checked> ${m === user_email ? m + ' (You)' : m}</label>`;
+  });
+  $('#participant-checkboxes').html(html);
+}
+// Populate days of week checkboxes
+function renderDaysCheckboxes() {
+  const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  let html = '';
+  days.forEach((d,i) => {
+    html += `<label class='me-2'><input type='checkbox' name='days' value='${i}' checked> ${d}</label>`;
+  });
+  $('#days-checkboxes').html(html);
+}
+// Hours slider label update
+$('#hours-range').on('input', function() {
+  $('#hours-range-label').text('6:00 - ' + this.value + ':00');
+});
+// Modal step logic
+let members = {{ members|tojson }};
+let user_email = {{ user_email|tojson }};
+$('#schedule-meeting-btn').click(function() {
+  renderParticipants(members, user_email);
+  renderDaysCheckboxes();
+  $('#hours-range').val(18); $('#hours-range-label').text('6:00 - 18:00');
+  $('#schedule-step-1').show();
+  $('#schedule-step-2').hide();
+  $('#schedule-step-3').hide();
+  const modal = new bootstrap.Modal(document.getElementById('scheduleMeetingModal'));
+  modal.show();
+});
+$('#meeting-next-btn').click(function() {
+  // Gather filters
+  let participants = [];
+  $('input[name="participants"]:checked').each(function(){participants.push($(this).val());});
+  let days = [];
+  $('input[name="days"]:checked').each(function(){days.push(parseInt($(this).val()));});
+  let duration = parseInt($('#meeting-duration').val());
+  let hours = parseInt($('#hours-range').val());
+  // Fetch suggested times
+  $('#suggested-times-list').html('<div class="text-center text-muted">Loading...</div>');
+  $('#schedule-step-1').hide();
+  $('#schedule-step-2').show();
+  $.ajax({
+    url: '{{ url_for("suggest_slots", team_id=team._id) }}',
+    method: 'POST',
+    contentType: 'application/json',
+    data: JSON.stringify({participants, days, duration, end_hour: hours}),
+    success: function(data) {
+      if(data.suggested_slots && data.suggested_slots.length > 0) {
+        let html = '';
+        data.suggested_slots.forEach((slot,i) => {
+          const start = luxon.DateTime.fromISO(slot.start).toLocal();
+          const end = luxon.DateTime.fromISO(slot.end).toLocal();
+          html += `<div><label><input type='checkbox' name='slot' value='${slot.start}|${slot.end}' checked> ${start.toFormat('cccc, LLL dd, t')} – ${end.toFormat('t')}</label></div>`;
+        });
+        $('#suggested-times-list').html(html);
+      } else {
+        $('#suggested-times-list').html('<div class="alert alert-warning">No mutually available times found.</div>');
+      }
+    },
+    error: function() {
+      $('#suggested-times-list').html('<div class="alert alert-danger">Failed to load suggestions.</div>');
+    }
+  });
+});
+$('#meeting-back-btn').click(function() {
+  $('#schedule-step-2').hide();
+  $('#schedule-step-1').show();
+});
+$('#suggested-times-form').submit(function(e) {
+  e.preventDefault();
+  // Gather selected slots
+  let slots = [];
+  $('input[name="slot"]:checked').each(function(){
+    let [start, end] = $(this).val().split('|');
+    slots.push({start, end});
+  });
+  if(slots.length === 0) {
+    alert('Please select at least one time slot.');
+    return;
+  }
+  // Create poll
+  $.ajax({
+    url: '{{ url_for("create_poll", team_id=team._id) }}',
+    method: 'POST',
+    contentType: 'application/json',
+    data: JSON.stringify({slots}),
+    success: function(data) {
+      $('#schedule-step-2').hide();
+      $('#schedule-step-3').show();
+    },
+    error: function() {
+      alert('Failed to create voting.');
+    }
+  });
+});
+</script>
                 <div class="row">
                     <div class="col-md-6">
                         <div class="p-3 bg-white rounded shadow-sm mb-3">

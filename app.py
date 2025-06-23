@@ -62,6 +62,39 @@ def create_team():
         members = list(set([user_email] + invited_emails))
         team = {"name": team_name, "members": members, "code": code}
         result = teams_col.insert_one(team)
+        # Sync creator's availability for the new team
+        creds_dict = session.get('credentials')
+        if creds_dict:
+            from google.oauth2.credentials import Credentials
+            creds = Credentials(
+                creds_dict['token'],
+                refresh_token=creds_dict.get('refresh_token'),
+                token_uri=creds_dict['token_uri'],
+                client_id=creds_dict['client_id'],
+                client_secret=creds_dict['client_secret'],
+                scopes=creds_dict['scopes']
+            )
+            # Only sync for this team
+            from googleapiclient.discovery import build as g_build
+            service = g_build('calendar', 'v3', credentials=creds)
+            import datetime
+            now = datetime.datetime.utcnow()
+            seven_days_later = now + datetime.timedelta(days=7)
+            time_min = now.isoformat() + 'Z'
+            time_max = seven_days_later.isoformat() + 'Z'
+            freebusy_query = {
+                "timeMin": time_min,
+                "timeMax": time_max,
+                "timeZone": "UTC",
+                "items": [{"id": "primary"}]
+            }
+            freebusy_result = service.freebusy().query(body=freebusy_query).execute()
+            busy = freebusy_result['calendars']['primary'].get('busy', [])
+            availability_col.update_one(
+                {"team_id": str(result.inserted_id), "user_email": user_email},
+                {"$set": {"busy": busy}},
+                upsert=True
+            )
         return redirect(url_for('team_page', team_id=str(result.inserted_id)))
     return render_template("create_team.html")
 
@@ -97,6 +130,7 @@ def join_team():
                     "items": [{"id": "primary"}]
                 }
                 freebusy_result = service.freebusy().query(body=freebusy_query).execute()
+                print("Freebusy result:", freebusy_result)
                 busy = freebusy_result['calendars']['primary'].get('busy', [])
                 availability_col.update_one(
                     {"team_id": str(team['_id']), "user_email": user_email},
@@ -129,19 +163,25 @@ def get_member_availability(team_id, email):
     busy = avail_doc['busy'] if avail_doc else []
     return {"busy": busy}
 
-@app.route('/team/<team_id>/suggest_slots')
+from flask import request, jsonify
+@app.route('/team/<team_id>/suggest_slots', methods=['GET', 'POST'])
 def suggest_slots(team_id):
     import datetime
+    data = request.get_json() if request.method == 'POST' else {}
     # Parameters
-    slot_minutes = 60
+    slot_minutes = int(data.get('duration', 60))
     max_slots = 5
-    # Get team members
-    team = teams_col.find_one({"_id": ObjectId(team_id)})
-    if not team:
-        return {"error": "Team not found"}, 404
-    members = team.get('members', [])
-    # Get all busy intervals for all members
-    avail_docs = availability_col.find({"team_id": team_id, "user_email": {"$in": members}})
+    participants = data.get('participants')
+    if not participants:
+        # fallback: all members
+        team = teams_col.find_one({"_id": ObjectId(team_id)})
+        if not team:
+            return jsonify({"error": "Team not found"}), 404
+        participants = team.get('members', [])
+    days = data.get('days', list(range(7)))
+    end_hour = int(data.get('end_hour', 18))
+    # Get all busy intervals for selected participants
+    avail_docs = availability_col.find({"team_id": team_id, "user_email": {"$in": participants}})
     member_busy = {doc['user_email']: doc.get('busy', []) for doc in avail_docs}
     # Build list of busy intervals per member as tuples (start, end) in UTC
     busy_map = {}
@@ -150,25 +190,21 @@ def suggest_slots(team_id):
             datetime.datetime.fromisoformat(b['start'].replace('Z','+00:00')),
             datetime.datetime.fromisoformat(b['end'].replace('Z','+00:00'))
         ) for b in busy_list]
-    # Define candidate slots: next 7 days, 1-hour blocks
+    # Define candidate slots: next 7 days, blocks of chosen duration, filtered by days/hours
     now = datetime.datetime.utcnow().replace(minute=0, second=0, microsecond=0)
     slots = []
     for day in range(7):
         d = now + datetime.timedelta(days=day)
         weekday = d.weekday() # 0=Mon,6=Sun
-        # Weekends: 8am-8pm
-        if weekday >= 5:
-            hours = range(8, 21)
-        else:
-            # Weekdays: 7-9am, 5-9pm
-            hours = list(range(7, 9)) + list(range(17, 21))
-        for h in hours:
-            slot_start = d.replace(hour=h, minute=0)
-            slot_end = slot_start + datetime.timedelta(minutes=slot_minutes)
-            slots.append((slot_start, slot_end))
-    # Filter slots: must be free for all members
+        if weekday in days:
+            # Allow slots from 6am to end_hour
+            for h in range(6, end_hour):
+                slot_start = d.replace(hour=h, minute=0)
+                slot_end = slot_start + datetime.timedelta(minutes=slot_minutes)
+                slots.append((slot_start, slot_end))
+    # Filter slots: must be free for all selected participants
     def slot_is_free(slot):
-        for user in members:
+        for user in participants:
             for b_start, b_end in busy_map.get(user, []):
                 # Overlap if slot_start < b_end and slot_end > b_start
                 if slot[0] < b_end and slot[1] > b_start:
@@ -180,7 +216,7 @@ def suggest_slots(team_id):
         "start": s[0].isoformat() + 'Z',
         "end": s[1].isoformat() + 'Z'
     } for s in free_slots[:max_slots]]
-    return {"suggested_slots": suggested}
+    return jsonify({"suggested_slots": suggested})
 
 @app.route('/login')
 def login():
@@ -196,6 +232,7 @@ def sync_user_availability(email, creds):
     """
     Fetch user's Google Calendar busy times for next 7 days and upsert for all their teams.
     """
+    print("Syncing availability for", email)
     from googleapiclient.discovery import build as g_build
     service = g_build('calendar', 'v3', credentials=creds)
     import datetime
@@ -211,9 +248,11 @@ def sync_user_availability(email, creds):
     }
     freebusy_result = service.freebusy().query(body=freebusy_query).execute()
     busy = freebusy_result['calendars']['primary'].get('busy', [])
+    print("Busy times:", busy)
     # Upsert for each team
     user_teams = teams_col.find({"members": email})
     for team in user_teams:
+        print("Upserting availability for", email, "for team", team['name'])
         availability_col.update_one(
             {"team_id": str(team['_id']), "user_email": email},
             {"$set": {"busy": busy}},
@@ -243,6 +282,7 @@ def oauth2callback():
     from googleapiclient.discovery import build as g_build
     people_service = g_build('people', 'v1', credentials=creds)
     profile = people_service.people().get(resourceName='people/me', personFields='emailAddresses').execute()
+    print("Profile:", profile)
     email = None
     if 'emailAddresses' in profile:
         email = profile['emailAddresses'][0]['value']
