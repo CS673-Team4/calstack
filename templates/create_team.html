@@ -2,16 +2,41 @@
 <html>
 <head>
     <title>Create Team</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background: #f4f6fa; }
+        .home-card {
+            max-width: 500px;
+            margin: 60px auto;
+            padding: 2.5rem 2rem;
+            background: #fff;
+            border-radius: 18px;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.09);
+        }
+        .brand {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #007bff;
+            margin-bottom: 0.5rem;
+        }
+    </style>
 </head>
 <body>
-    <h1>Create a New Team</h1>
-    <form method="post">
-        <label>Team Name:<br><input type="text" name="team_name" required></label><br><br>
-        <label>Invite Members (comma-separated emails):<br>
-            <input type="text" name="invited_emails" placeholder="email1@example.com, email2@example.com">
-        </label><br><br>
-        <button type="submit">Create Team</button>
-    </form>
-    <a href="{{ url_for('home') }}">Back to Home</a>
+    <div class="home-card">
+        <div class="brand">CalStack</div>
+        <h3 class="mb-4">Create a New Team</h3>
+        <form method="post">
+            <div class="mb-3">
+                <label class="form-label">Team Name</label>
+                <input type="text" name="team_name" class="form-control" required>
+            </div>
+            <div class="mb-4">
+                <label class="form-label">Invite Members <small class="text-muted">(comma-separated emails)</small></label>
+                <input type="text" name="invited_emails" class="form-control" placeholder="email1@example.com, email2@example.com">
+            </div>
+            <button type="submit" class="btn btn-primary w-100 mb-2">Create Team</button>
+            <a href="{{ url_for('home') }}" class="btn btn-link w-100">Back to Home</a>
+        </form>
+    </div>
 </body>
 </html>

@@ -2,7 +2,10 @@
 <html>
 <head>
     <title>{{ team.name }} - Team Page</title>
+    <link rel="icon" type="image/png" href="https://ui-avatars.com/api/?name=Team+Icon">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- jQuery CDN (required for $) -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <style>
         .profile-img {
             width: 80px;
@@ -75,6 +78,36 @@
                     {% endfor %}
                 </div>
                 <button class="btn btn-primary mb-3" id="schedule-meeting-btn">Schedule Meeting</button>
+                <button class="btn btn-secondary mb-3" id="invite-members-btn">Invite Members</button>
+                <button class="btn btn-outline-danger mb-3" id="leave-team-btn">Leave Team</button>
+
+                <!-- Invite Members Modal -->
+                <div class="modal fade" id="inviteMembersModal" tabindex="-1" aria-labelledby="inviteMembersModalLabel" aria-hidden="true">
+                  <div class="modal-dialog">
+                    <div class="modal-content">
+                      <div class="modal-header">
+                        <h5 class="modal-title" id="inviteMembersModalLabel">Invite Members</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                      </div>
+                      <div class="modal-body">
+                        <div class="mb-3">
+                          <label class="form-label">Share this invite code:</label>
+                          <div class="input-group mb-2">
+                            <input type="text" class="form-control" value="{{ team.code }}" id="invite-code-input" readonly>
+                            <button class="btn btn-outline-secondary" type="button" id="copy-invite-code-btn">Copy</button>
+                          </div>
+                        </div>
+                        <hr>
+                        <form id="invite-members-form">
+                          <label for="invite-emails" class="form-label">Or enter email addresses to send invites (comma-separated):</label>
+                          <input type="text" class="form-control mb-2" id="invite-emails" placeholder="email1@example.com, email2@example.com">
+                          <button type="submit" class="btn btn-primary">Send Invites</button>
+                          <div id="invite-members-status" class="mt-2"></div>
+                        </form>
+                      </div>
+                    </div>
+                  </div>
+                </div>
 <!-- Schedule Meeting Modal (Multi-step) -->
 <div class="modal fade" id="scheduleMeetingModal" tabindex="-1" aria-labelledby="scheduleMeetingModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
@@ -94,7 +127,7 @@
             <div id="days-checkboxes" class="mb-2"></div>
           </div>
           <div class="mb-2">
-            <label>Duration:</label>
+            <label for="meeting-duration">Duration:</label>
             <select id="meeting-duration" class="form-select w-auto d-inline-block ms-2">
               <option value="30">30 min</option>
               <option value="60" selected>1 hour</option>
@@ -103,10 +136,12 @@
             </select>
           </div>
           <div class="mb-2">
-            <label for="hours-range">Hours Considered:</label>
-            <input type="range" class="form-range" min="6" max="22" step="1" id="hours-range" value="18">
-            <span id="hours-range-label">6:00 - 18:00</span>
+            <label for="hours-from">Hours Considered:</label>
+            <input type="time" id="hours-from" value="06:00" class="form-control w-auto d-inline-block" aria-label="Start time">
+            to
+            <input type="time" id="hours-to" value="18:00" class="form-control w-auto d-inline-block" aria-label="End time">
           </div>
+          <div id="schedule-error" class="text-danger mb-2" style="display:none;"></div>
           <button class="btn btn-primary mt-2" id="meeting-next-btn">Next</button>
         </div>
         <!-- Step 2: Suggested Times Selection -->
@@ -128,6 +163,14 @@
   </div>
 </div>
 <script>
+// All custom JS must be inside this block for correct variable scope!
+// These variables are rendered by Flask/Jinja and must be in the same scope as all related JS.
+var members = {{ (members or [])|tojson|safe }};
+var user_email = {{ (user_email or "")|tojson|safe }};
+var team = {{ (team or {'_id': ''})|tojson|safe }};
+console.log('DEBUG: team variable is', team);
+
+$(function() {
 // Populate participant checkboxes
 function renderParticipants(members, user_email) {
   let html = '';
@@ -145,57 +188,71 @@ function renderDaysCheckboxes() {
   });
   $('#days-checkboxes').html(html);
 }
-// Hours slider label update
-$('#hours-range').on('input', function() {
-  $('#hours-range-label').text('6:00 - ' + this.value + ':00');
-});
-// Modal step logic
-let members = {{ members|tojson }};
-let user_email = {{ user_email|tojson }};
+// Modal logic
+// (Jinja variables already declared at the top of the script block)
+
 $('#schedule-meeting-btn').click(function() {
   renderParticipants(members, user_email);
   renderDaysCheckboxes();
-  $('#hours-range').val(18); $('#hours-range-label').text('6:00 - 18:00');
+  $('#hours-from').val('06:00'); $('#hours-to').val('18:00');
   $('#schedule-step-1').show();
   $('#schedule-step-2').hide();
   $('#schedule-step-3').hide();
   const modal = new bootstrap.Modal(document.getElementById('scheduleMeetingModal'));
   modal.show();
 });
-$('#meeting-next-btn').click(function() {
-  // Gather filters
+$('#meeting-next-btn').off('click').on('click', async function() {
+  // Gather selections
   let participants = [];
-  $('input[name="participants"]:checked').each(function(){participants.push($(this).val());});
-  let days = [];
-  $('input[name="days"]:checked').each(function(){days.push(parseInt($(this).val()));});
+  $('#participant-checkboxes input[name="participants"]:checked').each(function(){participants.push($(this).val());});
+  let days_of_week = [];
+  $('#days-checkboxes input[name="days"]:checked').each(function(){days_of_week.push(parseInt($(this).val()));});
   let duration = parseInt($('#meeting-duration').val());
-  let hours = parseInt($('#hours-range').val());
+  let from = $('#hours-from').val();
+  let to = $('#hours-to').val();
+  // Validate time range
+  if (!from || !to || from >= to) {
+    $('#schedule-error').text('Please select a valid time range.').show();
+    return;
+  } else {
+    $('#schedule-error').hide();
+  }
+  // Parse hours from "HH:MM" to int
+  let start_hour = parseInt(from.split(':')[0]);
+  let end_hour = parseInt(to.split(':')[0]);
   // Fetch suggested times
   $('#suggested-times-list').html('<div class="text-center text-muted">Loading...</div>');
   $('#schedule-step-1').hide();
   $('#schedule-step-2').show();
-  $.ajax({
-    url: '{{ url_for("suggest_slots", team_id=team._id) }}',
-    method: 'POST',
-    contentType: 'application/json',
-    data: JSON.stringify({participants, days, duration, end_hour: hours}),
-    success: function(data) {
-      if(data.suggested_slots && data.suggested_slots.length > 0) {
-        let html = '';
-        data.suggested_slots.forEach((slot,i) => {
-          const start = luxon.DateTime.fromISO(slot.start).toLocal();
-          const end = luxon.DateTime.fromISO(slot.end).toLocal();
-          html += `<div><label><input type='checkbox' name='slot' value='${slot.start}|${slot.end}' checked> ${start.toFormat('cccc, LLL dd, t')} – ${end.toFormat('t')}</label></div>`;
-        });
-        $('#suggested-times-list').html(html);
-      } else {
-        $('#suggested-times-list').html('<div class="alert alert-warning">No mutually available times found.</div>');
-      }
-    },
-    error: function() {
-      $('#suggested-times-list').html('<div class="alert alert-danger">Failed to load suggestions.</div>');
+  try {
+    const response = await fetch('/api/propose_slots', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        participants,
+        days_of_week,
+        duration,
+        start_hour,
+        end_hour,
+        team_id: team._id,
+        timezone: 'US/Eastern'
+      })
+    });
+    const data = await response.json();
+    if (data.slots && data.slots.length > 0) {
+      let html = '';
+      data.slots.forEach((slot,i) => {
+        const start = luxon.DateTime.fromISO(slot.start).toLocal();
+        const end = luxon.DateTime.fromISO(slot.end).toLocal();
+        html += `<div><label><input type='checkbox' name='slot' value='${slot.start}|${slot.end}' checked> ${start.toFormat('cccc, LLL dd, t')} – ${end.toFormat('t')}</label></div>`;
+      });
+      $('#suggested-times-list').html(html);
+    } else {
+      $('#suggested-times-list').html('<div class="alert alert-warning">No mutually available times found for your team in the next 7 days.</div>');
     }
-  });
+  } catch (err) {
+    $('#suggested-times-list').html('<div class="alert alert-danger">Failed to load suggestions.</div>');
+  }
 });
 $('#meeting-back-btn').click(function() {
   $('#schedule-step-2').hide();
@@ -222,24 +279,30 @@ $('#suggested-times-form').submit(function(e) {
     success: function(data) {
       $('#schedule-step-2').hide();
       $('#schedule-step-3').show();
+      fetchPolls(); // Refresh polls list after poll creation
     },
     error: function() {
       alert('Failed to create voting.');
     }
   });
 });
+});
 </script>
                 <div class="row">
                     <div class="col-md-6">
                         <div class="p-3 bg-white rounded shadow-sm mb-3">
                             <h5>Upcoming Meetings</h5>
-                            <div class="text-muted">(Coming soon)</div>
+                            <div id="meetings-list">
+  <div class="text-muted">Loading...</div>
+</div>
                         </div>
                     </div>
                     <div class="col-md-6">
                         <div class="p-3 bg-white rounded shadow-sm mb-3">
                             <h5>Upcoming Voting</h5>
-                            <div class="text-muted">(Coming soon)</div>
+                            <div id="polls-list">
+                              <div class="text-muted">Loading...</div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -294,45 +357,259 @@ function renderCalendar(busy) {
     // Initial render
     renderCalendar({{ busy|tojson }});
 
-    // Schedule Meeting button handler
-    $('#schedule-meeting-btn').click(function() {
-        // Show modal
-        const modal = new bootstrap.Modal(document.getElementById('scheduleMeetingModal'));
-        $('#suggested-slots-list').html('<div class="text-center text-muted">Loading suggestions...</div>');
-        modal.show();
-        // Fetch suggested slots
-        $.getJSON('{{ url_for("suggest_slots", team_id=team._id) }}', function(data) {
-            if (data.suggested_slots && data.suggested_slots.length > 0) {
-                let html = '<ul class="list-group">';
-                data.suggested_slots.forEach(slot => {
-                    // Show as local time
-                    const start = luxon.DateTime.fromISO(slot.start).toLocal();
-                    const end = luxon.DateTime.fromISO(slot.end).toLocal();
-                    html += `<li class="list-group-item">${start.toFormat('cccc, LLL dd, t')} – ${end.toFormat('t')}</li>`;
-                });
-                html += '</ul>';
-                $('#suggested-slots-list').html(html);
+    // --- Meetings Frontend ---
+async function fetchMeetings() {
+  $('#meetings-list').html('<div class="text-muted">Loading...</div>');
+  $.get(`/team/${team._id}/meetings`, function(data) {
+    if (!data.meetings || data.meetings.length === 0) {
+      $('#meetings-list').html('<div class="text-muted">No upcoming meetings.</div>');
+      return;
+    }
+    let html = '';
+    data.meetings.forEach(meeting => {
+      const start = luxon.DateTime.fromISO(meeting.slot.start).toLocal();
+      const end = luxon.DateTime.fromISO(meeting.slot.end).toLocal();
+      html += `<div class='mb-3 border rounded p-2'><b>${start.toFormat('cccc, LLL dd, t')} – ${end.toFormat('t')}</b><br>`;
+      html += `<div class='text-muted small mb-1'>Attendees: ${meeting.attendees ? meeting.attendees.join(', ') : ''}</div>`;
+      // Show Delete button if current user is the creator of the poll that created the meeting
+      if (meeting.poll_id_creator === user_email) {
+        html += `<button class='btn btn-danger btn-sm float-end ms-2 meeting-delete-btn' data-meeting-id='${meeting._id}'>Delete</button>`;
+      }
+      html += `</div>`;
+    });
+    $('#meetings-list').html(html);
+    // Attach delete handler
+    $('.meeting-delete-btn').off('click').on('click', function() {
+      const meetingId = $(this).data('meeting-id');
+      if (confirm('Delete this meeting?')) {
+        fetch(`/api/team/${team._id}/meetings/${meetingId}`, {method: 'DELETE'})
+          .then(res => res.json())
+          .then(data => {
+            if (data.success) {
+              fetchMeetings();
             } else {
-                $('#suggested-slots-list').html('<div class="alert alert-warning">No mutually available times found for your team in the next 7 days.</div>');
+              alert(data.error || 'Failed to delete meeting.');
             }
-        }).fail(function() {
-            $('#suggested-slots-list').html('<div class="alert alert-danger">Failed to load suggestions.</div>');
-        });
+          });
+      }
     });
+  });
+}
 
-    // Member avatar click handler
-    $('.avatar').click(function() {
-        var email = $(this).data('email');
-        $('.avatar').removeClass('selected');
-        $(this).addClass('selected');
-        // Update profile
-        $('#profile-img').attr('src', 'https://ui-avatars.com/api/?name=' + email);
-        $('#profile-name').text(email);
-        // Fetch calendar
-        $.getJSON('{{ url_for("get_member_availability", team_id=team._id, email="__EMAIL__") }}'.replace('__EMAIL__', email), function(data) {
-            renderCalendar(data.busy);
-        });
+// Invite Members button handler
+$('#invite-members-btn').off('click').on('click', function() {
+  const modal = new bootstrap.Modal(document.getElementById('inviteMembersModal'));
+  $('#invite-members-status').text('');
+  $('#invite-emails').val('');
+  modal.show();
+});
+
+// Copy invite code
+$('#copy-invite-code-btn').off('click').on('click', function() {
+  const codeInput = document.getElementById('invite-code-input');
+  codeInput.select();
+  codeInput.setSelectionRange(0, 99999);
+  document.execCommand('copy');
+  $(this).text('Copied!');
+  setTimeout(() => { $(this).text('Copy'); }, 1500);
+});
+
+// Invite members form
+$('#invite-members-form').off('submit').on('submit', function(e) {
+  e.preventDefault();
+  const emails = $('#invite-emails').val().split(',').map(e => e.trim()).filter(e => e);
+  if (emails.length === 0) {
+    $('#invite-members-status').text('Please enter at least one email.').addClass('text-danger').removeClass('text-success');
+    return;
+  }
+  $('#invite-members-status').text('Sending...').removeClass('text-danger text-success');
+  fetch(`/api/team/${team._id}/invite`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({emails})
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (data.success) {
+      $('#invite-members-status').text('Invites sent!').addClass('text-success').removeClass('text-danger');
+      $('#invite-emails').val('');
+    } else {
+      $('#invite-members-status').text(data.error || 'Failed to send invites.').addClass('text-danger').removeClass('text-success');
+    }
+  })
+  .catch(() => {
+    $('#invite-members-status').text('Failed to send invites.').addClass('text-danger').removeClass('text-success');
+  });
+});
+
+// Leave Team button handler
+$('#leave-team-btn').off('click').on('click', function() {
+  if (confirm('Are you sure you want to leave this team?')) {
+    fetch(`/api/team/${team._id}/leave`, {method: 'POST'})
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          window.location.href = '/home';
+        } else {
+          alert(data.error || 'Failed to leave team.');
+        }
+      });
+  }
+});
+
+    // --- Voting Frontend ---
+async function fetchPolls() {
+  $('#polls-list').html('<div class="text-muted">Loading...</div>');
+  try {
+    const res = await fetch(`/api/team/${team._id}/polls`);
+    const data = await res.json();
+    if (!data.polls || data.polls.length === 0) {
+      $('#polls-list').html('<div class="text-muted">No open votings.</div>');
+      return;
+    }
+    let html = '';
+    data.polls.forEach(poll => {
+      if (poll.status === 'open' || !poll.result) {
+        html += renderPoll(poll);
+      }
     });
+    $('#polls-list').html(html);
+    data.polls.forEach(poll => {
+      // Attach delete handler if user is creator
+      if (poll.creator === user_email) {
+        $(document).on('click', `.poll-delete-btn[data-poll-id='${poll._id}']`, function() {
+          if (confirm('Delete this poll?')) {
+            fetch(`/api/team/${team._id}/polls/${poll._id}`, {method: 'DELETE'})
+              .then(res => res.json())
+              .then(data => {
+                if (data.success) {
+                  fetchPolls();
+                  fetchMeetings();
+                } else {
+                  alert(data.error || 'Failed to delete poll.');
+                }
+              });
+          }
+        });
+      }
+      if (!$(`#poll-form-${poll._id}`).length) return;
+      $(`#poll-form-${poll._id}`).on('submit', function(e) {
+        e.preventDefault();
+        let selected = [];
+        $(`input[name='poll-slot-${poll._id}']:checked`).each(function(){
+          let [start, end] = $(this).val().split('|');
+          selected.push({start, end});
+        });
+        if (selected.length === 0) {
+          alert('Please select at least one slot.');
+        } else {
+          // Create poll
+          $.ajax({
+            url: `/api/team/${team._id}/polls/${poll._id}/vote`,
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({user_email, selected_slots: selected}),
+            success: function(data) {
+              fetchPolls();
+              fetchMeetings();
+            },
+            error: function() {
+              alert('Failed to cast vote.');
+            }
+          });
+        }
+      });
+    });
+  } catch (e) {
+    console.error('Error fetching or rendering polls:', e);
+    $('#polls-list').html('<div class="text-danger">Failed to load polls.</div>');
+  }
+}
+
+function renderPoll(poll) {
+  const userVote = poll.votes && poll.votes[user_email] ? poll.votes[user_email] : undefined;
+  let html = `<div class='mb-3 border rounded p-2'><div><b>Proposed Times:</b></div>`;
+  poll.proposed_slots = poll.proposed_slots || poll.options || [];
+  // Show delete button if current user is creator
+  if (poll.creator === user_email) {
+    html += `<button class='btn btn-danger btn-sm float-end ms-2 poll-delete-btn' data-poll-id='${poll._id}'>Delete</button>`;
+  }
+  if (userVote) {
+    html += `<div class='text-success mb-2'>You have voted.</div>`;
+    html += '<ul>';
+    Object.entries(userVote).forEach(([key, slot]) => {
+      // Handle slot as object or string
+      let start, end;
+      if (typeof slot === 'string') {
+        [start, end] = slot.split('|');
+      } else {
+        start = slot.start;
+        end = slot.end;
+      }
+      start = luxon.DateTime.fromISO(start).toLocal();
+      end = luxon.DateTime.fromISO(end).toLocal();
+      html += `<li>${start.toFormat('cccc, LLL dd, t')} – ${end.toFormat('t')}</li>`;
+    });
+    html += '</ul>';
+  } else {
+    html += `<form id='poll-form-${poll._id}'>`;
+    poll.proposed_slots.forEach((slot,i) => {
+      const start = luxon.DateTime.fromISO(slot.start).toLocal();
+      const end = luxon.DateTime.fromISO(slot.end).toLocal();
+      const inputId = `poll-slot-${poll._id}-${i}`;
+      html += `<div><input type='checkbox' id='${inputId}' name='poll-slot-${poll._id}' value='${slot.start}|${slot.end}' checked> <label for='${inputId}'>${start.toFormat('cccc, LLL dd, t')} – ${end.toFormat('t')}</label></div>`;
+    });
+    html += `<button class='btn btn-primary btn-sm mt-2' type='submit'>Vote</button></form>`;
+  }
+  // Show votes summary only (do not show scheduled meeting in poll UI)
+  if (poll.votes && Object.keys(poll.votes).length > 0) {
+    const voteCount = Object.keys(poll.votes).length;
+    const totalMembers = members.length;
+    if (voteCount < totalMembers) {
+      html += `<div class='mt-2'><b>${voteCount} vote${voteCount > 1 ? 's' : ''} in of ${totalMembers}.</b></div>`;
+    }
+    // Do NOT show scheduled meeting here; handled in meetings list
+  }
+  html += '</div>';
+  return html;
+}
+
+// Fetch suggested slots
+$.getJSON('{{ url_for("suggest_slots", team_id=team._id) }}', function(data) {
+  if (data.suggested_slots && data.suggested_slots.length > 0) {
+    let html = '<ul class="list-group">';
+    data.suggested_slots.forEach(slot => {
+      // Show as local time
+      const start = luxon.DateTime.fromISO(slot.start).toLocal();
+      const end = luxon.DateTime.fromISO(slot.end).toLocal();
+      html += `<li class="list-group-item">${start.toFormat('cccc, LLL dd, t')} – ${end.toFormat('t')}</li>`;
+    });
+    html += '</ul>';
+    $('#suggested-slots-list').html(html);
+  } else {
+    $('#suggested-slots-list').html('<div class="alert alert-warning">No mutually available times found for your team in the next 7 days.</div>');
+  }
+}).fail(function() {
+  $('#suggested-slots-list').html('<div class="alert alert-danger">Failed to load suggestions.</div>');
+});
+
+// Load polls and meetings on page load
+fetchPolls();
+fetchMeetings();
+
+// Member avatar click handler
+$('.avatar').click(function() {
+  var email = $(this).data('email');
+  $('.avatar').removeClass('selected');
+  $(this).addClass('selected');
+  // Update profile
+  $('#profile-img').attr('src', 'https://ui-avatars.com/api/?name=' + email);
+  $('#profile-name').text(email);
+  // Fetch calendar
+  $.getJSON('{{ url_for("get_member_availability", team_id=team._id, email="__EMAIL__") }}'.replace('__EMAIL__', email), function(data) {
+    renderCalendar(data.busy);
+  });
+});
 </script>
 </body>
 </html>
