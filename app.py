@@ -3,6 +3,25 @@ from flask import Flask, redirect, url_for, session, request, render_template
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
+import requests  # For Microsoft Graph API
+
+# Microsoft OAuth2 config (fill these from Azure Portal)
+MS_SCOPES = [
+    'openid',
+    'offline_access',
+    'User.Read',
+    'Calendars.Read'
+]
+
+MS_AUTHORITY = 'https://login.microsoftonline.com/common'
+# Log env at import time
+try:
+    with open('/tmp/ms_env_debug.txt', 'w') as f:
+        f.write(f"IMPORT: OAUTH2_REDIRECT_URI={os.environ.get('OAUTH2_REDIRECT_URI')}\nIMPORT: MS_CLIENT_ID={os.environ.get('MS_CLIENT_ID')}\n")
+except Exception:
+    pass
+
+
 import datetime
 from dotenv import load_dotenv
 from pymongo import MongoClient
@@ -424,7 +443,7 @@ def suggest_slots(team_id):
     for day in range(7):
         d = now + datetime.timedelta(days=day)
         weekday = d.weekday() # 0=Mon,6=Sun
-        if weekday in days:
+        if weekday in days_py:
             # Allow slots from 6am to end_hour
             for h in range(6, end_hour):
                 slot_start = d.replace(hour=h, minute=0, tzinfo=datetime.timezone.utc)
@@ -590,26 +609,143 @@ def login():
     auth_url, _ = flow.authorization_url(prompt='consent')
     return redirect(auth_url)
 
-def sync_user_availability(email, creds):
+@app.route('/login/outlook')
+def login_outlook():
+    # Start Microsoft OAuth2 flow
+    ms_client_id = os.environ.get('MS_CLIENT_ID')
+    # Use dedicated redirect URI for Microsoft
+    ms_redirect_uri = os.environ.get('MS_OUTLOOK_REDIRECT_URI', 'https://chronoconqueror.com/oauth2callback/outlook')
+    ms_auth_url = (
+        f"{MS_AUTHORITY}/oauth2/v2.0/authorize?"
+        f"client_id={ms_client_id}&response_type=code&redirect_uri={ms_redirect_uri}"
+        f"&response_mode=query&scope={' '.join(MS_SCOPES)}&state=12345"
+    )
+    # Write debug info to a file for troubleshooting
+    try:
+        with open('/tmp/ms_oauth_debug.txt', 'w') as f:
+            f.write(ms_auth_url + '\n')
+        # Log env at runtime
+        with open('/tmp/ms_env_debug.txt', 'a') as f:
+            f.write(f"RUNTIME: MS_OUTLOOK_REDIRECT_URI={ms_redirect_uri}\nRUNTIME: MS_CLIENT_ID={ms_client_id}\n")
+    except Exception as e:
+        pass
+    print('[DEBUG] Microsoft OAuth2 URL:', ms_auth_url)
+    return redirect(ms_auth_url)
+
+
+
+@app.route('/oauth2callback/outlook')
+def oauth2callback_outlook():
+    # Handle Microsoft OAuth2 callback
+    code = request.args.get('code')
+    if not code:
+        return "Missing code in callback", 400
+    # Exchange code for token
+    ms_client_id = os.environ.get('MS_CLIENT_ID')
+    ms_client_secret = os.environ.get('MS_CLIENT_SECRET')
+    # Use dedicated redirect URI for Microsoft token exchange
+    ms_redirect_uri = os.environ.get('MS_OUTLOOK_REDIRECT_URI', 'https://chronoconqueror.com/oauth2callback/outlook')
+    token_url = f"{MS_AUTHORITY}/oauth2/v2.0/token"
+    data = {
+        'client_id': ms_client_id,
+        'scope': ' '.join(MS_SCOPES),
+        'code': code,
+        'redirect_uri': ms_redirect_uri,
+        'grant_type': 'authorization_code',
+        'client_secret': ms_client_secret
+    }
+    resp = requests.post(token_url, data=data)
+    if resp.status_code != 200:
+        return f"Token exchange failed: {resp.text}", 400
+    token_data = resp.json()
+    access_token = token_data.get('access_token')
+    refresh_token = token_data.get('refresh_token')
+    if not access_token:
+        return "No access token received", 400
+    # Get user email
+    user_resp = requests.get('https://graph.microsoft.com/v1.0/me', headers={'Authorization': f'Bearer {access_token}'})
+    if user_resp.status_code != 200:
+        return "Failed to fetch user info", 400
+    ms_profile = user_resp.json()
+    email = ms_profile.get('mail') or ms_profile.get('userPrincipalName')
+    if not email:
+        return "Could not retrieve email from Microsoft profile.", 400
+    session['email'] = email
+    session['ms_credentials'] = {
+        'access_token': access_token,
+        'refresh_token': refresh_token,
+        'scopes': MS_SCOPES
+    }
+    # Optionally: create user document if not exists
+    if not users_col.find_one({'email': email}):
+        users_col.insert_one({'email': email, 'name': email.split('@')[0]})
+    # Sync Outlook availability
+    sync_user_availability(email, None, provider='outlook')
+    return redirect(url_for('home'))
+
+
+def sync_user_availability(email, creds, provider='google'):
     """
-    Fetch user's Google Calendar busy times for next 7 days and upsert for all their teams.
+    Fetch user's Calendar busy times for next 7 days and upsert for all their teams.
+    Supports both Google and Outlook providers.
     """
-    print("Syncing availability for", email)
-    from googleapiclient.discovery import build as g_build
-    service = g_build('calendar', 'v3', credentials=creds)
+    print(f"Syncing availability for {email} (provider={provider})")
+    busy = []
     import datetime
     now = datetime.datetime.utcnow()
     seven_days_later = now + datetime.timedelta(days=7)
     time_min = now.isoformat() + 'Z'
     time_max = seven_days_later.isoformat() + 'Z'
-    freebusy_query = {
-        "timeMin": time_min,
-        "timeMax": time_max,
-        "timeZone": "UTC",
-        "items": [{"id": "primary"}]
-    }
-    freebusy_result = service.freebusy().query(body=freebusy_query).execute()
-    busy = freebusy_result['calendars']['primary'].get('busy', [])
+    if provider == 'google':
+        from googleapiclient.discovery import build as g_build
+        service = g_build('calendar', 'v3', credentials=creds)
+        freebusy_query = {
+            "timeMin": time_min,
+            "timeMax": time_max,
+            "timeZone": "UTC",
+            "items": [{"id": "primary"}]
+        }
+        freebusy_result = service.freebusy().query(body=freebusy_query).execute()
+        busy = freebusy_result['calendars']['primary'].get('busy', [])
+    elif provider == 'outlook':
+        # Get access token from session
+        ms_creds = session.get('ms_credentials')
+        if not ms_creds:
+            print('No Outlook credentials in session')
+            return
+        access_token = ms_creds.get('access_token')
+        headers = {'Authorization': f'Bearer {access_token}', 'Content-Type': 'application/json'}
+        # Use getSchedule for free/busy info
+        # See: https://learn.microsoft.com/en-us/graph/api/calendar-getschedule
+        graph_url = 'https://graph.microsoft.com/v1.0/me/calendar/getSchedule'
+        body = {
+            "schedules": [email],
+            "startTime": {
+                "dateTime": now.strftime('%Y-%m-%dT%H:%M:%S'),
+                "timeZone": "UTC"
+            },
+            "endTime": {
+                "dateTime": seven_days_later.strftime('%Y-%m-%dT%H:%M:%S'),
+                "timeZone": "UTC"
+            },
+            "availabilityViewInterval": 60
+        }
+        resp = requests.post(graph_url, headers=headers, json=body)
+        if resp.status_code != 200:
+            print('Failed to fetch Outlook free/busy:', resp.text)
+            busy = []
+        else:
+            data = resp.json()
+            # Parse busy times to match Google format: [{start, end}]
+            busy = []
+            if data.get('value'):
+                for sched in data['value']:
+                    for b in sched.get('scheduleItems', []):
+                        if b['status'] == 'busy':
+                            busy.append({
+                                'start': b['start']['dateTime'],
+                                'end': b['end']['dateTime']
+                            })
     print("Busy times:", busy)
     # Upsert for each team
     user_teams = teams_col.find({"members": email})
@@ -620,6 +756,7 @@ def sync_user_availability(email, creds):
             {"$set": {"busy": busy}},
             upsert=True
         )
+
 
 @app.route('/oauth2callback')
 def oauth2callback():
