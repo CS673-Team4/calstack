@@ -55,23 +55,27 @@ def slot_overlaps(slot_start, slot_end, busy_times):
 
 @app.route('/api/propose_slots', methods=['POST'])
 def propose_slots():
+    import random
     data = request.get_json()
     participants = data['participants']  # list of emails
-    # JS: 0=Sun, 1=Mon, ..., 6=Sat; Python: 0=Mon, ..., 6=Sun
     days_js = data.get('days_of_week', list(range(7)))
-    days_of_week = [(d - 1) % 7 for d in days_js]  # remap JS to Python
-    duration = int(data['duration'])     # in minutes
+    days_of_week = [(d - 1) % 7 for d in days_js]
+    duration = int(data['duration'])
     start_hour = int(data['start_hour'])
     end_hour = int(data['end_hour'])
     team_id = data['team_id']
-    # Get the timezone of the current user (requester)
     user_email = session.get('email')
     user_doc = db.users.find_one({'email': user_email})
     timezone = user_doc.get('timezone', 'UTC') if user_doc else 'UTC'
     tz = pytz.timezone(timezone)
     now = datetime.now(tz)
-    proposals = []
-
+    
+    # New options
+    algorithm = data.get('algorithm', 'next')
+    num_slots = int(data.get('num_slots', 5))
+    avoid_work_hours = bool(data.get('avoid_work_hours', False))
+    
+    all_slots = []
     for day_offset in range(7):
         day = now + timedelta(days=day_offset)
         if day.weekday() not in days_of_week:
@@ -81,6 +85,11 @@ def propose_slots():
         slot_start = day_start
         while slot_start + timedelta(minutes=duration) <= day_end:
             slot_end = slot_start + timedelta(minutes=duration)
+            # Work hours filter: skip 9am-5pm Mon-Fri if avoid_work_hours
+            if avoid_work_hours and day.weekday() < 5:
+                if slot_start.hour < 17:
+                    slot_start += timedelta(minutes=duration)
+                    continue
             conflict = False
             for email in participants:
                 avail_doc = db.availability.find_one({'user_email': email, 'team_id': team_id})
@@ -94,19 +103,39 @@ def propose_slots():
                         if busy_end.tzinfo is None:
                             busy_end = tz.localize(busy_end)
                         busy_times.append({'start': busy_start, 'end': busy_end})
-                # If no avail_doc, treat as fully available (busy_times = [])
                 if slot_overlaps(slot_start, slot_end, busy_times):
                     conflict = True
                     break
             if not conflict:
-                proposals.append({
+                all_slots.append({
                     'start': slot_start.isoformat(),
-                    'end': slot_end.isoformat()
+                    'end': slot_end.isoformat(),
+                    'day': day.date().isoformat()
                 })
-                if len(proposals) >= 5:
-                    return jsonify({'slots': proposals})
             slot_start += timedelta(minutes=duration)
-    return jsonify({'slots': proposals})
+    # Algorithm selection
+    slots = []
+    if algorithm == 'split':
+        # Distribute slots across days
+        slots_by_day = {}
+        for slot in all_slots:
+            slots_by_day.setdefault(slot['day'], []).append(slot)
+        days = sorted(slots_by_day.keys())
+        i = 0
+        while len(slots) < num_slots and any(slots_by_day.values()):
+            for day in days:
+                if slots_by_day[day]:
+                    slots.append(slots_by_day[day].pop(0))
+                    if len(slots) >= num_slots:
+                        break
+    elif algorithm == 'random':
+        slots = random.sample(all_slots, min(num_slots, len(all_slots))) if all_slots else []
+    else:  # 'next' (default)
+        slots = all_slots[:num_slots]
+    # Remove 'day' key before returning
+    for slot in slots:
+        slot.pop('day', None)
+    return jsonify({'slots': slots})
 
 # Collections
 users_col = db.users
