@@ -1,5 +1,4 @@
 client_secret.json
 .env
-.env.test
 test_reports
 __pycache__
