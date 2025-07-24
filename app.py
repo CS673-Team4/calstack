@@ -681,7 +681,7 @@ def login_outlook():
     # Start Microsoft OAuth2 flow
     ms_client_id = os.environ.get('MS_CLIENT_ID')
     # Use dedicated redirect URI for Microsoft
-    ms_redirect_uri = os.environ.get('MS_OUTLOOK_REDIRECT_URI', 'https://chronoconqueror.com/oauth2callback/outlook')
+    ms_redirect_uri = os.environ.get('MS_OUTLOOK_REDIRECT_URI', 'https://calstack.com/oauth2callback/outlook')
     ms_auth_url = (
         f"{MS_AUTHORITY}/oauth2/v2.0/authorize?"
         f"client_id={ms_client_id}&response_type=code&redirect_uri={ms_redirect_uri}"
@@ -711,7 +711,7 @@ def oauth2callback_outlook():
     ms_client_id = os.environ.get('MS_CLIENT_ID')
     ms_client_secret = os.environ.get('MS_CLIENT_SECRET')
     # Use dedicated redirect URI for Microsoft token exchange
-    ms_redirect_uri = os.environ.get('MS_OUTLOOK_REDIRECT_URI', 'https://chronoconqueror.com/oauth2callback/outlook')
+    ms_redirect_uri = os.environ.get('MS_OUTLOOK_REDIRECT_URI', 'https://calstack.com/oauth2callback/outlook')
     token_url = f"{MS_AUTHORITY}/oauth2/v2.0/token"
     data = {
         'client_id': ms_client_id,

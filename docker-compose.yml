@@ -1,0 +1,70 @@
+version: '3.8'
+
+services:
+  # CalStack Application
+  app:
+    build: .
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_ENV=production
+      - MONGO_URI=mongodb://mongodb:27017/calstack
+      - SENDGRID_API_KEY=${SENDGRID_API_KEY:-test_disabled}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-test_disabled}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-test_disabled}
+      - MS_CLIENT_ID=${MS_CLIENT_ID:-test_disabled}
+      - MS_CLIENT_SECRET=${MS_CLIENT_SECRET:-test_disabled}
+      - FLASK_SECRET_KEY=${FLASK_SECRET_KEY:-dev_secret_key_change_in_production}
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    volumes:
+      - ./client_secret.json:/app/client_secret.json:ro
+    restart: unless-stopped
+
+  # MongoDB Database
+  mongodb:
+    image: mongo:5.0
+    ports:
+      - "27017:27017"
+    environment:
+      - MONGO_INITDB_DATABASE=calstack
+    volumes:
+      - mongodb_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.runCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  # Test Runner (for CI/CD)
+  test-runner:
+    build: .
+    environment:
+      - FLASK_ENV=testing
+      - MONGO_URI=mongodb://mongodb:27017/calstack_test
+      - TEST_BASE_URL=http://app:5000
+      - SENDGRID_API_KEY=test_disabled
+      - GOOGLE_CLIENT_ID=test_disabled
+      - MS_CLIENT_ID=test_disabled
+    depends_on:
+      app:
+        condition: service_started
+      mongodb:
+        condition: service_healthy
+    command: >
+      bash -c "
+        echo 'Waiting for app to be ready...' &&
+        timeout 60 bash -c 'until curl -s http://app:5000 > /dev/null; do sleep 2; done' &&
+        echo 'Running tests...' &&
+        python run_tests.py --type fast --coverage
+      "
+    volumes:
+      - ./test_reports:/app/test_reports
+    profiles:
+      - testing
+
+volumes:
+  mongodb_data:
