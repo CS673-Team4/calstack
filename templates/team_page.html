@@ -136,6 +136,22 @@
             </select>
           </div>
           <div class="mb-2">
+            <label for="algorithm-select">Scheduling Algorithm:</label>
+            <select id="algorithm-select" class="form-select w-auto d-inline-block ms-2">
+              <option value="next" selected>Next N Available</option>
+              <option value="split">Split Days</option>
+              <option value="random">Random</option>
+            </select>
+          </div>
+          <div class="mb-2">
+            <label for="num-slots">Number of Time Slots:</label>
+            <input type="number" id="num-slots" class="form-control w-auto d-inline-block ms-2" value="5" min="1" max="20">
+          </div>
+          <div class="form-check mb-2">
+            <input class="form-check-input" type="checkbox" value="" id="avoid-work-hours">
+            <label class="form-check-label" for="avoid-work-hours">Avoid Work Hours (after 5PM Mon-Fri)</label>
+          </div>
+          <div class="mb-2">
             <label for="hours-from">Hours Considered:</label>
             <input type="time" id="hours-from" value="06:00" class="form-control w-auto d-inline-block" aria-label="Start time">
             to
@@ -236,7 +252,10 @@ $('#meeting-next-btn').off('click').on('click', async function() {
         start_hour,
         end_hour,
         team_id: team._id,
-        timezone: user_timezone || 'UTC'
+        timezone: user_timezone || 'UTC',
+        algorithm: $('#algorithm-select').val(),
+        num_slots: parseInt($('#num-slots').val()),
+        avoid_work_hours: $('#avoid-work-hours').is(':checked')
       })
     });
     const data = await response.json();
