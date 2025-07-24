@@ -7,10 +7,11 @@ import requests  # For Microsoft Graph API
 
 # Microsoft OAuth2 config (fill these from Azure Portal)
 MS_SCOPES = [
-    'openid',
-    'offline_access',
-    'User.Read',
-    'Calendars.Read'
+    "openid",
+    "profile",
+    "offline_access",
+    "Calendars.Read",
+    "MailboxSettings.Read"
 ]
 
 MS_AUTHORITY = 'https://login.microsoftonline.com/common'
@@ -63,8 +64,10 @@ def propose_slots():
     start_hour = int(data['start_hour'])
     end_hour = int(data['end_hour'])
     team_id = data['team_id']
-    timezone = 'US/Eastern'
-
+    # Get the timezone of the current user (requester)
+    user_email = session.get('email')
+    user_doc = db.users.find_one({'email': user_email})
+    timezone = user_doc.get('timezone', 'UTC') if user_doc else 'UTC'
     tz = pytz.timezone(timezone)
     now = datetime.now(tz)
     proposals = []
@@ -124,31 +127,63 @@ import base64
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail, Email, To, Attachment, FileContent, FileName, FileType, Disposition
 
-def generate_ics(meeting, team_name="Your Team"):
+def generate_ics(meeting, team_name="Your Team", user_tz="UTC"):
     from datetime import datetime
+    import pytz
     slot = meeting['slot']
     start = slot['start']  # ISO format string
     end = slot['end']      # ISO format string
-    start_dt = datetime.fromisoformat(start)
-    end_dt = datetime.fromisoformat(end)
+    # Parse as UTC then convert to user_tz
+    start_dt_utc = datetime.fromisoformat(start.replace('Z', '+00:00'))
+    end_dt_utc = datetime.fromisoformat(end.replace('Z', '+00:00'))
+    try:
+        tz = pytz.timezone(user_tz)
+    except Exception:
+        tz = pytz.UTC
+        user_tz = 'UTC'
+    start_dt = start_dt_utc.astimezone(tz)
+    end_dt = end_dt_utc.astimezone(tz)
     dtstamp = datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')
     uid = f"{meeting.get('_id', 'meeting')}-{dtstamp}@chronoconqueror.com"
     summary = f"{team_name} Meeting"
-    ics = f"""BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//ChronoConqueror//Calstack//EN\nCALSCALE:GREGORIAN\nMETHOD:REQUEST\nBEGIN:VEVENT\nDTSTART:{start_dt.strftime('%Y%m%dT%H%M%SZ')}\nDTEND:{end_dt.strftime('%Y%m%dT%H%M%SZ')}\nDTSTAMP:{dtstamp}\nUID:{uid}\nSUMMARY:{summary}\nDESCRIPTION:Scheduled via Calstack\nEND:VEVENT\nEND:VCALENDAR\n"""
+    # Add TZID to DTSTART/DTEND, and VTIMEZONE block for compatibility
+    ics = f"""BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//ChronoConqueror//Calstack//EN\nCALSCALE:GREGORIAN\nMETHOD:REQUEST\nBEGIN:VEVENT\nDTSTART;TZID={user_tz}:{start_dt.strftime('%Y%m%dT%H%M%S')}\nDTEND;TZID={user_tz}:{end_dt.strftime('%Y%m%dT%H%M%S')}\nDTSTAMP:{dtstamp}\nUID:{uid}\nSUMMARY:{summary}\nDESCRIPTION:Scheduled via Calstack\nEND:VEVENT\nEND:VCALENDAR\n"""
     return ics
 
 def send_meeting_invites(meeting, participants, team_name="Your Team"):
     import os
+    import pytz
     from sendgrid.helpers.mail import Content
+    from datetime import datetime
     sg_api_key = os.environ.get('SENDGRID_API_KEY')
     if not sg_api_key:
         print("SendGrid API key not set!")
         return
     slot = meeting['slot']
     subject = f"New Meeting Scheduled for {team_name}"
-    body = f"A new meeting has been scheduled for your team.\n\nStart: {slot['start']}\nEnd: {slot['end']}\n\nThis invite should appear in your calendar."
-    ics_content = generate_ics(meeting, team_name)
     for email in participants:
+        # Fetch user timezone from MongoDB
+        user_doc = users_col.find_one({'email': email})
+        user_tz = user_doc.get('timezone', 'UTC') if user_doc else 'UTC'
+        ics_content = generate_ics(meeting, team_name, user_tz=user_tz)
+        try:
+            tz = pytz.timezone(user_tz)
+        except Exception:
+            tz = pytz.UTC
+        # Parse UTC times and convert to local
+        start_utc = datetime.fromisoformat(slot['start'].replace('Z', '+00:00'))
+        end_utc = datetime.fromisoformat(slot['end'].replace('Z', '+00:00'))
+        start_local = start_utc.astimezone(tz)
+        end_local = end_utc.astimezone(tz)
+        # Format with timezone name
+        start_str = start_local.strftime('%Y-%m-%d %I:%M %p (%Z)')
+        end_str = end_local.strftime('%Y-%m-%d %I:%M %p (%Z)')
+        body = (
+            f"A new meeting has been scheduled for your team.\n\n"
+            f"Start: {start_str}\n"
+            f"End: {end_str}\n\n"
+            f"This invite should appear in your calendar."
+        )
         message = Mail(
             from_email=Email('scheduler@chronoconqueror.com', team_name),
             to_emails=To(email),
@@ -399,7 +434,10 @@ def team_page(team_id):
     # Get current user's availability
     avail_doc = availability_col.find_one({"team_id": team_id, "user_email": user_email})
     busy = avail_doc['busy'] if avail_doc else []
-    return render_template("team_page.html", team=team, user_email=user_email, members=members, busy=busy)
+    # Fetch user's timezone from users_col
+    user_doc = users_col.find_one({'email': user_email})
+    user_timezone = user_doc.get('timezone', 'UTC') if user_doc else 'UTC'
+    return render_template("team_page.html", team=team, user_email=user_email, members=members, busy=busy, user_timezone=user_timezone)
 
 @app.route('/team/<team_id>/availability/<email>')
 def get_member_availability(team_id, email):
@@ -676,9 +714,81 @@ def oauth2callback_outlook():
         'refresh_token': refresh_token,
         'scopes': MS_SCOPES
     }
-    # Optionally: create user document if not exists
-    if not users_col.find_one({'email': email}):
-        users_col.insert_one({'email': email, 'name': email.split('@')[0]})
+    # Fetch mailbox settings to get timezone
+    try:
+        print(f"[DEBUG] access_token: {access_token[:5]}...{access_token[-5:]}")
+        tz_resp = requests.get('https://graph.microsoft.com/v1.0/me/mailboxSettings', headers={'Authorization': f'Bearer {access_token}'})
+        print(f"[DEBUG] tz_resp.status_code: {tz_resp.status_code}")
+        print(f"[DEBUG] tz_resp.text: {tz_resp.text}")
+    except Exception as e:
+        print(f"[DEBUG] Exception during mailboxSettings fetch: {e}")
+        tz_resp = None
+    user_tz = 'UTC'
+    if tz_resp and tz_resp.status_code == 200:
+        try:
+            mailbox_settings = tz_resp.json()
+            print(f"[DEBUG] mailbox_settings: {mailbox_settings}")
+            ms_tz = mailbox_settings.get('timeZone', 'UTC')
+            print(f"[DEBUG] ms_tz (raw Outlook timeZone): {ms_tz}")
+            # Map Windows to IANA timezone if possible
+            WINDOWS_TO_IANA = {
+                # US
+                'UTC': 'UTC',
+                'Eastern Standard Time': 'America/New_York',
+                'Central Standard Time': 'America/Chicago',
+                'Pacific Standard Time': 'America/Los_Angeles',
+                'Mountain Standard Time': 'America/Denver',
+                'Alaskan Standard Time': 'America/Anchorage',
+                'Hawaiian Standard Time': 'Pacific/Honolulu',
+                'Atlantic Standard Time': 'America/Halifax',
+                'Arizona Standard Time': 'America/Phoenix',
+                'Pacific Standard Time (Mexico)': 'America/Tijuana',
+                # Europe
+                'GMT Standard Time': 'Europe/London',
+                'W. Europe Standard Time': 'Europe/Berlin',
+                'Central Europe Standard Time': 'Europe/Budapest',
+                'Romance Standard Time': 'Europe/Paris',
+                'Central European Standard Time': 'Europe/Warsaw',
+                'E. Europe Standard Time': 'Europe/Bucharest',
+                'FLE Standard Time': 'Europe/Kiev',
+                'Turkey Standard Time': 'Europe/Istanbul',
+                'Russian Standard Time': 'Europe/Moscow',
+                # Asia
+                'China Standard Time': 'Asia/Shanghai',
+                'Singapore Standard Time': 'Asia/Singapore',
+                'Tokyo Standard Time': 'Asia/Tokyo',
+                'Korea Standard Time': 'Asia/Seoul',
+                'SE Asia Standard Time': 'Asia/Bangkok',
+                'India Standard Time': 'Asia/Kolkata',
+                'Myanmar Standard Time': 'Asia/Yangon',
+                'Arabian Standard Time': 'Asia/Dubai',
+                'Israel Standard Time': 'Asia/Jerusalem',
+                'Iran Standard Time': 'Asia/Tehran',
+                # Australia/NZ
+                'AUS Eastern Standard Time': 'Australia/Sydney',
+                'AUS Central Standard Time': 'Australia/Adelaide',
+                'E. Australia Standard Time': 'Australia/Brisbane',
+                'Tasmania Standard Time': 'Australia/Hobart',
+                'New Zealand Standard Time': 'Pacific/Auckland',
+                # Africa
+                'South Africa Standard Time': 'Africa/Johannesburg',
+                'Egypt Standard Time': 'Africa/Cairo',
+                'Morocco Standard Time': 'Africa/Casablanca',
+                # South America
+                'Argentina Standard Time': 'America/Argentina/Buenos_Aires',
+                'SA Eastern Standard Time': 'America/Sao_Paulo',
+                'Venezuela Standard Time': 'America/Caracas',
+                # Add more as needed; see: https://github.com/unicode-org/cldr/blob/main/common/supplemental/windowsZones.xml
+            }
+            user_tz = WINDOWS_TO_IANA.get(ms_tz, 'UTC')
+        except Exception as e:
+            print(f"[DEBUG] Exception during mailboxSettings parsing: {e}")
+    else:
+        print(f"[DEBUG] tz_resp.status_code: {tz_resp.status_code}")
+        print(f"[DEBUG] tz_resp.text: {tz_resp.text}")
+    # Upsert user with timezone
+    users_col.update_one({'email': email}, {'$set': {'name': email.split('@')[0], 'timezone': user_tz}}, upsert=True)
+    print(f"[DEBUG] Outlook login: {email} timezone set to {user_tz}")
     # Sync Outlook availability
     sync_user_availability(email, None, provider='outlook')
     return redirect(url_for('home'))
@@ -791,9 +901,14 @@ def oauth2callback():
         return "Could not retrieve email from Google profile.", 400
     session['email'] = email
 
-    # Optionally: create user document if not exists
-    if not users_col.find_one({'email': email}):
-        users_col.insert_one({'email': email, 'name': email.split('@')[0]})
+    # Fetch user's timezone from Google Calendar API
+    calendar_service = g_build('calendar', 'v3', credentials=creds)
+    tz_settings = calendar_service.settings().get(setting='timezone').execute()
+    user_tz = tz_settings.get('value', 'UTC')
+
+    # Upsert user with timezone
+    users_col.update_one({'email': email}, {'$set': {'name': email.split('@')[0], 'timezone': user_tz}}, upsert=True)
+    print(f"[DEBUG] Google login: {email} timezone set to {user_tz}")
 
     # Sync availability for all teams
     sync_user_availability(email, creds)
