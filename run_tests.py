@@ -46,10 +46,22 @@ def run_tests(test_type="all", verbose=False, coverage=False):
         cmd.extend(["-m", "api"])
     elif test_type == "integration":
         cmd.extend(["-m", "integration"])
+    elif test_type == "workflow":
+        # Run workflow integration tests
+        test_files = ['tests/test_workflow_integration.py']
+        markers = ['-m', 'workflow']
+        cmd.extend(markers)
+        cmd.extend(test_files)
+    elif test_type == "authenticated":
+        # Run authenticated workflow tests
+        test_files = ['tests/test_full_workflow.py', 'tests/test_authenticated_workflows.py']
+        markers = ['-m', 'authenticated']
+        cmd.extend(markers)
+        cmd.extend(test_files)
     elif test_type == "e2e":
         cmd.extend(["-m", "e2e"])
     elif test_type == "fast":
-        cmd.extend(["-m", "not slow"])
+        cmd.extend(["-m", "not slow and not e2e"])  # Exclude slow E2E tests
     elif test_type == "all":
         cmd.append("tests/")
     
@@ -60,8 +72,8 @@ def main():
     parser = argparse.ArgumentParser(description="Run CalStack tests")
     parser.add_argument(
         "--type", 
-        choices=["all", "api", "integration", "e2e", "fast"],
-        default="all",
+        choices=["all", "api", "integration", "workflow", "authenticated", "e2e", "fast"],
+        default="fast",
         help="Type of tests to run"
     )
     parser.add_argument(

@@ -330,8 +330,22 @@ def create_team():
     if not user_email:
         return redirect(url_for('index'))
     if request.method == 'POST':
-        team_name = request.form['team_name']
-        invited_emails = [e.strip() for e in request.form['invited_emails'].split(',') if e.strip()]
+        # Input validation
+        team_name = request.form.get('team_name', '').strip()
+        if not team_name:
+            return render_template('create_team.html', error='Team name is required')
+        if len(team_name) > 100:
+            return render_template('create_team.html', error='Team name too long (max 100 characters)')
+        
+        invited_emails_raw = request.form.get('invited_emails', '')
+        invited_emails = [e.strip() for e in invited_emails_raw.split(',') if e.strip()]
+        
+        # Validate email formats
+        import re
+        email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+        for email in invited_emails:
+            if not re.match(email_pattern, email):
+                return render_template('create_team.html', error=f'Invalid email format: {email}')
         import secrets
         code = secrets.token_hex(4)
         members = [user_email]  # Only creator is a member at first
@@ -470,6 +484,20 @@ def team_page(team_id):
 
 @app.route('/team/<team_id>/availability/<email>')
 def get_member_availability(team_id, email):
+    # Security: Require authentication and team membership
+    user_email = session.get('email')
+    if not user_email:
+        return redirect(url_for('index'))
+    
+    # Verify user is member of the team
+    team = teams_col.find_one({"_id": ObjectId(team_id)})
+    if not team or user_email not in team.get('members', []):
+        return jsonify({"error": "Access denied"}), 403
+    
+    # Verify requested email is also a team member
+    if email not in team.get('members', []):
+        return jsonify({"error": "User not found in team"}), 404
+    
     avail_doc = availability_col.find_one({"team_id": team_id, "user_email": email})
     busy = avail_doc['busy'] if avail_doc else []
     return {"busy": busy}

@@ -83,12 +83,7 @@ jobs:
         path: test_reports/
         retention-days: 30
     
-    - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v3
-      if: always()
-      with:
-        file: test_reports/coverage/coverage.xml
-        fail_ci_if_error: false
+
 
   # Job 2: Build Docker Image
   build-image:

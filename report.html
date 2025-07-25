@@ -1,0 +1,852 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8"/>
+    <title>report.html</title>
+    <style>body {
+  font-family: Helvetica, Arial, sans-serif;
+  font-size: 12px;
+  /* do not increase min-width as some may use split screens */
+  min-width: 800px;
+  color: #999;
+}
+
+h1 {
+  font-size: 24px;
+  color: black;
+}
+
+h2 {
+  font-size: 16px;
+  color: black;
+}
+
+p {
+  color: black;
+}
+
+a {
+  color: #999;
+}
+
+table {
+  border-collapse: collapse;
+}
+
+/******************************
+ * SUMMARY INFORMATION
+ ******************************/
+#environment td {
+  padding: 5px;
+  border: 1px solid #E6E6E6;
+}
+#environment tr:nth-child(odd) {
+  background-color: #f6f6f6;
+}
+
+/******************************
+ * TEST RESULT COLORS
+ ******************************/
+span.passed,
+.passed .col-result {
+  color: green;
+}
+
+span.skipped,
+span.xfailed,
+span.rerun,
+.skipped .col-result,
+.xfailed .col-result,
+.rerun .col-result {
+  color: orange;
+}
+
+span.error,
+span.failed,
+span.xpassed,
+.error .col-result,
+.failed .col-result,
+.xpassed .col-result {
+  color: red;
+}
+
+/******************************
+ * RESULTS TABLE
+ *
+ * 1. Table Layout
+ * 2. Extra
+ * 3. Sorting items
+ *
+ ******************************/
+/*------------------
+ * 1. Table Layout
+ *------------------*/
+#results-table {
+  border: 1px solid #e6e6e6;
+  color: #999;
+  font-size: 12px;
+  width: 100%;
+}
+#results-table th,
+#results-table td {
+  padding: 5px;
+  border: 1px solid #E6E6E6;
+  text-align: left;
+}
+#results-table th {
+  font-weight: bold;
+}
+
+/*------------------
+ * 2. Extra
+ *------------------*/
+.log {
+  background-color: #e6e6e6;
+  border: 1px solid #e6e6e6;
+  color: black;
+  display: block;
+  font-family: "Courier New", Courier, monospace;
+  height: 230px;
+  overflow-y: scroll;
+  padding: 5px;
+  white-space: pre-wrap;
+}
+.log:only-child {
+  height: inherit;
+}
+
+div.image {
+  border: 1px solid #e6e6e6;
+  float: right;
+  height: 240px;
+  margin-left: 5px;
+  overflow: hidden;
+  width: 320px;
+}
+div.image img {
+  width: 320px;
+}
+
+div.video {
+  border: 1px solid #e6e6e6;
+  float: right;
+  height: 240px;
+  margin-left: 5px;
+  overflow: hidden;
+  width: 320px;
+}
+div.video video {
+  overflow: hidden;
+  width: 320px;
+  height: 240px;
+}
+
+.collapsed {
+  display: none;
+}
+
+.expander::after {
+  content: " (show details)";
+  color: #BBB;
+  font-style: italic;
+  cursor: pointer;
+}
+
+.collapser::after {
+  content: " (hide details)";
+  color: #BBB;
+  font-style: italic;
+  cursor: pointer;
+}
+
+/*------------------
+ * 3. Sorting items
+ *------------------*/
+.sortable {
+  cursor: pointer;
+}
+
+.sort-icon {
+  font-size: 0px;
+  float: left;
+  margin-right: 5px;
+  margin-top: 5px;
+  /*triangle*/
+  width: 0;
+  height: 0;
+  border-left: 8px solid transparent;
+  border-right: 8px solid transparent;
+}
+.inactive .sort-icon {
+  /*finish triangle*/
+  border-top: 8px solid #E6E6E6;
+}
+.asc.active .sort-icon {
+  /*finish triangle*/
+  border-bottom: 8px solid #999;
+}
+.desc.active .sort-icon {
+  /*finish triangle*/
+  border-top: 8px solid #999;
+}
+</style></head>
+  <body onLoad="init()">
+    <script>/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this file,
+ * You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+
+function toArray(iter) {
+    if (iter === null) {
+        return null;
+    }
+    return Array.prototype.slice.call(iter);
+}
+
+function find(selector, elem) { // eslint-disable-line no-redeclare
+    if (!elem) {
+        elem = document;
+    }
+    return elem.querySelector(selector);
+}
+
+function findAll(selector, elem) {
+    if (!elem) {
+        elem = document;
+    }
+    return toArray(elem.querySelectorAll(selector));
+}
+
+function sortColumn(elem) {
+    toggleSortStates(elem);
+    const colIndex = toArray(elem.parentNode.childNodes).indexOf(elem);
+    let key;
+    if (elem.classList.contains('result')) {
+        key = keyResult;
+    } else if (elem.classList.contains('links')) {
+        key = keyLink;
+    } else {
+        key = keyAlpha;
+    }
+    sortTable(elem, key(colIndex));
+}
+
+function showAllExtras() { // eslint-disable-line no-unused-vars
+    findAll('.col-result').forEach(showExtras);
+}
+
+function hideAllExtras() { // eslint-disable-line no-unused-vars
+    findAll('.col-result').forEach(hideExtras);
+}
+
+function showExtras(colresultElem) {
+    const extras = colresultElem.parentNode.nextElementSibling;
+    const expandcollapse = colresultElem.firstElementChild;
+    extras.classList.remove('collapsed');
+    expandcollapse.classList.remove('expander');
+    expandcollapse.classList.add('collapser');
+}
+
+function hideExtras(colresultElem) {
+    const extras = colresultElem.parentNode.nextElementSibling;
+    const expandcollapse = colresultElem.firstElementChild;
+    extras.classList.add('collapsed');
+    expandcollapse.classList.remove('collapser');
+    expandcollapse.classList.add('expander');
+}
+
+function showFilters() {
+    let visibleString = getQueryParameter('visible') || 'all';
+    visibleString = visibleString.toLowerCase();
+    const checkedItems = visibleString.split(',');
+
+    const filterItems = document.getElementsByClassName('filter');
+    for (let i = 0; i < filterItems.length; i++) {
+        filterItems[i].hidden = false;
+
+        if (visibleString != 'all') {
+            filterItems[i].checked = checkedItems.includes(filterItems[i].getAttribute('data-test-result'));
+            filterTable(filterItems[i]);
+        }
+    }
+}
+
+function addCollapse() {
+    // Add links for show/hide all
+    const resulttable = find('table#results-table');
+    const showhideall = document.createElement('p');
+    showhideall.innerHTML = '<a href="javascript:showAllExtras()">Show all details</a> / ' +
+                            '<a href="javascript:hideAllExtras()">Hide all details</a>';
+    resulttable.parentElement.insertBefore(showhideall, resulttable);
+
+    // Add show/hide link to each result
+    findAll('.col-result').forEach(function(elem) {
+        const collapsed = getQueryParameter('collapsed') || 'Passed';
+        const extras = elem.parentNode.nextElementSibling;
+        const expandcollapse = document.createElement('span');
+        if (extras.classList.contains('collapsed')) {
+            expandcollapse.classList.add('expander');
+        } else if (collapsed.includes(elem.innerHTML)) {
+            extras.classList.add('collapsed');
+            expandcollapse.classList.add('expander');
+        } else {
+            expandcollapse.classList.add('collapser');
+        }
+        elem.appendChild(expandcollapse);
+
+        elem.addEventListener('click', function(event) {
+            if (event.currentTarget.parentNode.nextElementSibling.classList.contains('collapsed')) {
+                showExtras(event.currentTarget);
+            } else {
+                hideExtras(event.currentTarget);
+            }
+        });
+    });
+}
+
+function getQueryParameter(name) {
+    const match = RegExp('[?&]' + name + '=([^&]*)').exec(window.location.search);
+    return match && decodeURIComponent(match[1].replace(/\+/g, ' '));
+}
+
+function init () { // eslint-disable-line no-unused-vars
+    resetSortHeaders();
+
+    addCollapse();
+
+    showFilters();
+
+    sortColumn(find('.initial-sort'));
+
+    findAll('.sortable').forEach(function(elem) {
+        elem.addEventListener('click',
+            function() {
+                sortColumn(elem);
+            }, false);
+    });
+}
+
+function sortTable(clicked, keyFunc) {
+    const rows = findAll('.results-table-row');
+    const reversed = !clicked.classList.contains('asc');
+    const sortedRows = sort(rows, keyFunc, reversed);
+    /* Whole table is removed here because browsers acts much slower
+     * when appending existing elements.
+     */
+    const thead = document.getElementById('results-table-head');
+    document.getElementById('results-table').remove();
+    const parent = document.createElement('table');
+    parent.id = 'results-table';
+    parent.appendChild(thead);
+    sortedRows.forEach(function(elem) {
+        parent.appendChild(elem);
+    });
+    document.getElementsByTagName('BODY')[0].appendChild(parent);
+}
+
+function sort(items, keyFunc, reversed) {
+    const sortArray = items.map(function(item, i) {
+        return [keyFunc(item), i];
+    });
+
+    sortArray.sort(function(a, b) {
+        const keyA = a[0];
+        const keyB = b[0];
+
+        if (keyA == keyB) return 0;
+
+        if (reversed) {
+            return keyA < keyB ? 1 : -1;
+        } else {
+            return keyA > keyB ? 1 : -1;
+        }
+    });
+
+    return sortArray.map(function(item) {
+        const index = item[1];
+        return items[index];
+    });
+}
+
+function keyAlpha(colIndex) {
+    return function(elem) {
+        return elem.childNodes[1].childNodes[colIndex].firstChild.data.toLowerCase();
+    };
+}
+
+function keyLink(colIndex) {
+    return function(elem) {
+        const dataCell = elem.childNodes[1].childNodes[colIndex].firstChild;
+        return dataCell == null ? '' : dataCell.innerText.toLowerCase();
+    };
+}
+
+function keyResult(colIndex) {
+    return function(elem) {
+        const strings = ['Error', 'Failed', 'Rerun', 'XFailed', 'XPassed',
+            'Skipped', 'Passed'];
+        return strings.indexOf(elem.childNodes[1].childNodes[colIndex].firstChild.data);
+    };
+}
+
+function resetSortHeaders() {
+    findAll('.sort-icon').forEach(function(elem) {
+        elem.parentNode.removeChild(elem);
+    });
+    findAll('.sortable').forEach(function(elem) {
+        const icon = document.createElement('div');
+        icon.className = 'sort-icon';
+        icon.textContent = 'vvv';
+        elem.insertBefore(icon, elem.firstChild);
+        elem.classList.remove('desc', 'active');
+        elem.classList.add('asc', 'inactive');
+    });
+}
+
+function toggleSortStates(elem) {
+    //if active, toggle between asc and desc
+    if (elem.classList.contains('active')) {
+        elem.classList.toggle('asc');
+        elem.classList.toggle('desc');
+    }
+
+    //if inactive, reset all other functions and add ascending active
+    if (elem.classList.contains('inactive')) {
+        resetSortHeaders();
+        elem.classList.remove('inactive');
+        elem.classList.add('active');
+    }
+}
+
+function isAllRowsHidden(value) {
+    return value.hidden == false;
+}
+
+function filterTable(elem) { // eslint-disable-line no-unused-vars
+    const outcomeAtt = 'data-test-result';
+    const outcome = elem.getAttribute(outcomeAtt);
+    const classOutcome = outcome + ' results-table-row';
+    const outcomeRows = document.getElementsByClassName(classOutcome);
+
+    for(let i = 0; i < outcomeRows.length; i++){
+        outcomeRows[i].hidden = !elem.checked;
+    }
+
+    const rows = findAll('.results-table-row').filter(isAllRowsHidden);
+    const allRowsHidden = rows.length == 0 ? true : false;
+    const notFoundMessage = document.getElementById('not-found-message');
+    notFoundMessage.hidden = !allRowsHidden;
+}
+</script>
+    <h1>report.html</h1>
+    <p>Report generated on 24-Jul-2025 at 23:17:43 by <a href="https://pypi.python.org/pypi/pytest-html">pytest-html</a> v3.2.0</p>
+    <h2>Summary</h2>
+    <p>35 tests ran in 11.82 seconds. </p>
+    <p class="filter" hidden="true">(Un)check the boxes to filter the results.</p><input checked="true" class="filter" data-test-result="passed" hidden="true" name="filter_checkbox" onChange="filterTable(this)" type="checkbox"/><span class="passed">25 passed</span>, <input checked="true" class="filter" data-test-result="skipped" hidden="true" name="filter_checkbox" onChange="filterTable(this)" type="checkbox"/><span class="skipped">3 skipped</span>, <input checked="true" class="filter" data-test-result="failed" hidden="true" name="filter_checkbox" onChange="filterTable(this)" type="checkbox"/><span class="failed">10 failed</span>, <input checked="true" class="filter" data-test-result="error" hidden="true" name="filter_checkbox" onChange="filterTable(this)" type="checkbox"/><span class="error">6 errors</span>, <input checked="true" class="filter" data-test-result="xfailed" disabled="true" hidden="true" name="filter_checkbox" onChange="filterTable(this)" type="checkbox"/><span class="xfailed">0 expected failures</span>, <input checked="true" class="filter" data-test-result="xpassed" disabled="true" hidden="true" name="filter_checkbox" onChange="filterTable(this)" type="checkbox"/><span class="xpassed">0 unexpected passes</span>
+    <h2>Results</h2>
+    <table id="results-table">
+      <thead id="results-table-head">
+        <tr>
+          <th class="sortable result initial-sort" col="result">Result</th>
+          <th class="sortable" col="name">Test</th>
+          <th class="sortable" col="duration">Duration</th>
+          <th class="sortable links" col="links">Links</th></tr>
+        <tr hidden="true" id="not-found-message">
+          <th colspan="4">No results found. Try to check the filters</th></tr></thead>
+      <tbody class="error results-table-row">
+        <tr>
+          <td class="col-result">Error</td>
+          <td class="col-name">tests/test_e2e.py::TestAuthenticationFlow::test_login_page_accessible::setup</td>
+          <td class="col-duration">7.71</td>
+          <td class="col-links"></td></tr>
+        <tr>
+          <td class="extra" colspan="4">
+            <div class="log">@pytest.fixture(scope=&quot;function&quot;)<br/>    def browser():<br/>        &quot;&quot;&quot;Selenium WebDriver for end-to-end tests&quot;&quot;&quot;<br/>        chrome_options = Options()<br/>        chrome_options.add_argument(&quot;--headless&quot;)<br/>        chrome_options.add_argument(&quot;--no-sandbox&quot;)<br/>        chrome_options.add_argument(&quot;--disable-dev-shm-usage&quot;)<br/>        chrome_options.add_argument(&quot;--disable-gpu&quot;)<br/>        chrome_options.add_argument(&quot;--window-size=1920,1080&quot;)<br/>    <br/>        service = Service(ChromeDriverManager().install())<br/>&gt;       driver = webdriver.Chrome(service=service, options=chrome_options)<br/><br/>tests/conftest.py:41: <br/>_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ <br/>/opt/hostedtoolcache/Python/3.12.11/x64/lib/python3.12/site-packages/selenium/webdriver/chrome/webdriver.py:45: in __init__<br/>    super().__init__(<br/>/opt/hostedtoolcache/Python/3.12.11/x64/lib/python3.12/site-packages/selenium/webdriver/chromium/webdriver.py:53: in __init__<br/>    self.service.start()<br/>/opt/hostedtoolcache/Python/3.12.11/x64/lib/python3.12/site-packages/selenium/webdriver/common/service.py:98: in start<br/>    self._start_process(self._path)<br/>/opt/hostedtoolcache/Python/3.12.11/x64/lib/python3.12/site-packages/selenium/webdriver/common/service.py:204: in _start_process<br/>    self.process = subprocess.Popen(<br/>/opt/hostedtoolcache/Python/3.12.11/x64/lib/python3.12/subprocess.py:1026: in __init__<br/>    self._execute_child(args, executable, preexec_fn, close_fds,<br/>_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ <br/><br/>self = &lt;Popen: returncode: 255 args: [&#x27;/home/runner/.wdm/drivers/chromedriver/linux...&gt;<br/>args = [&#x27;/home/runner/.wdm/drivers/chromedriver/linux64/138.0.7204.168/chromedriver-linux64/THIRD_PARTY_NOTICES.chromedriver&#x27;, &#x27;--port=55599&#x27;]<br/>executable = b&#x27;/home/runner/.wdm/drivers/chromedriver/linux64/138.0.7204.168/chromedriver-linux64/THIRD_PARTY_NOTICES.chromedriver&#x27;<br/>preexec_fn = None, close_fds = True, pass_fds = (), cwd = None<br/>env = environ({&#x27;SHELL&#x27;: &#x27;/bin/bash&#x27;, &#x27;SELENIUM_JAR_PATH&#x27;: &#x27;/usr/share/java/selenium-server.jar&#x27;, &#x27;CONDA&#x27;: &#x27;/usr/share/minico...est_disabled&#x27;, &#x27;PYTEST_CURRENT_TEST&#x27;: &#x27;tests/test_e2e.py::TestAuthenticationFlow::test_login_page_accessible (setup)&#x27;})<br/>startupinfo = None, creationflags = 0, shell = False, p2cread = 13<br/>p2cwrite = 14, c2pread = -1, c2pwrite = 12, errread = -1, errwrite = 12<br/>restore_signals = True, gid = None, gids = None, uid = None, umask = -1<br/>start_new_session = False, process_group = -1<br/><br/>    def _execute_child(self, args, executable, preexec_fn, close_fds,<br/>                       pass_fds, cwd, env,<br/>                       startupinfo, creationflags, shell,<br/>                       p2cread, p2cwrite,<br/>                       c2pread, c2pwrite,<br/>                       errread, errwrite,<br/>                       restore_signals,<br/>                       gid, gids, uid, umask,<br/>                       start_new_session, process_group):<br/>        &quot;&quot;&quot;Execute program (POSIX version)&quot;&quot;&quot;<br/>    <br/>        if isinstance(args, (str, bytes)):<br/>            args = [args]<br/>        elif isinstance(args, os.PathLike):<br/>            if shell:<br/>                raise TypeError(&#x27;path-like args is not allowed when &#x27;<br/>                                &#x27;shell is true&#x27;)<br/>            args = [args]<br/>        else:<br/>            args = list(args)<br/>    <br/>        if shell:<br/>            # On Android the default shell is at &#x27;/system/bin/sh&#x27;.<br/>            unix_shell = (&#x27;/system/bin/sh&#x27; if<br/>                      hasattr(sys, &#x27;getandroidapilevel&#x27;) else &#x27;/bin/sh&#x27;)<br/>            args = [unix_shell, &quot;-c&quot;] + args<br/>            if executable:<br/>                args[0] = executable<br/>    <br/>        if executable is None:<br/>            executable = args[0]<br/>    <br/>        sys.audit(&quot;subprocess.Popen&quot;, executable, args, cwd, env)<br/>    <br/>        if (_USE_POSIX_SPAWN<br/>                and os.path.dirname(executable)<br/>                and preexec_fn is None<br/>                and not close_fds<br/>                and not pass_fds<br/>                and cwd is None<br/>                and (p2cread == -1 or p2cread &gt; 2)<br/>                and (c2pwrite == -1 or c2pwrite &gt; 2)<br/>                and (errwrite == -1 or errwrite &gt; 2)<br/>                and not start_new_session<br/>                and process_group == -1<br/>                and gid is None<br/>                and gids is None<br/>                and uid is None<br/>                and umask &lt; 0):<br/>            self._posix_spawn(args, executable, env, restore_signals,<br/>                              p2cread, p2cwrite,<br/>                              c2pread, c2pwrite,<br/>                              errread, errwrite)<br/>            return<br/>    <br/>        orig_executable = executable<br/>    <br/>        # For transferring possible exec failure from child to parent.<br/>        # Data format: &quot;exception name:hex errno:description&quot;<br/>        # Pickle is not used; it is complex and involves memory allocation.<br/>        errpipe_read, errpipe_write = os.pipe()<br/>        # errpipe_write must not be in the standard io 0, 1, or 2 fd range.<br/>        low_fds_to_close = []<br/>        while errpipe_write &lt; 3:<br/>            low_fds_to_close.append(errpipe_write)<br/>            errpipe_write = os.dup(errpipe_write)<br/>        for low_fd in low_fds_to_close:<br/>            os.close(low_fd)<br/>        try:<br/>            try:<br/>                # We must avoid complex work that could involve<br/>                # malloc or free in the child process to avoid<br/>                # potential deadlocks, thus we do all this here.<br/>                # and pass it to fork_exec()<br/>    <br/>                if env is not None:<br/>                    env_list = []<br/>                    for k, v in env.items():<br/>                        k = os.fsencode(k)<br/>                        if b&#x27;=&#x27; in k:<br/>                            raise ValueError(&quot;illegal environment variable name&quot;)<br/>                        env_list.append(k + b&#x27;=&#x27; + os.fsencode(v))<br/>                else:<br/>                    env_list = None  # Use execv instead of execve.<br/>                executable = os.fsencode(executable)<br/>                if os.path.dirname(executable):<br/>                    executable_list = (executable,)<br/>                else:<br/>                    # This matches the behavior of os._execvpe().<br/>                    executable_list = tuple(<br/>                        os.path.join(os.fsencode(dir), executable)<br/>                        for dir in os.get_exec_path(env))<br/>                fds_to_keep = set(pass_fds)<br/>                fds_to_keep.add(errpipe_write)<br/>                self.pid = _fork_exec(<br/>                        args, executable_list,<br/>                        close_fds, tuple(sorted(map(int, fds_to_keep))),<br/>                        cwd, env_list,<br/>                        p2cread, p2cwrite, c2pread, c2pwrite,<br/>                        errread, errwrite,<br/>                        errpipe_read, errpipe_write,<br/>                        restore_signals, start_new_session,<br/>                        process_group, gid, gids, uid, umask,<br/>                        preexec_fn, _USE_VFORK)<br/>                self._child_created = True<br/>            finally:<br/>                # be sure the FD is closed no matter what<br/>                os.close(errpipe_write)<br/>    <br/>            self._close_pipe_fds(p2cread, p2cwrite,<br/>                                 c2pread, c2pwrite,<br/>                                 errread, errwrite)<br/>    <br/>            # Wait for exec to fail or succeed; possibly raising an<br/>            # exception (limited in size)<br/>            errpipe_data = bytearray()<br/>            while True:<br/>                part = os.read(errpipe_read, 50000)<br/>                errpipe_data += part<br/>                if not part or len(errpipe_data) &gt; 50000:<br/>                    break<br/>        finally:<br/>            # be sure the FD is closed no matter what<br/>            os.close(errpipe_read)<br/>    <br/>        if errpipe_data:<br/>            try:<br/>                pid, sts = os.waitpid(self.pid, 0)<br/>                if pid == self.pid:<br/>                    self._handle_exitstatus(sts)<br/>                else:<br/>                    self.returncode = sys.maxsize<br/>            except ChildProcessError:<br/>                pass<br/>    <br/>            try:<br/>                exception_name, hex_errno, err_msg = (<br/>                        errpipe_data.split(b&#x27;:&#x27;, 2))<br/>                # The encoding here should match the encoding<br/>                # written in by the subprocess implementations<br/>                # like _posixsubprocess<br/>                err_msg = err_msg.decode()<br/>            except ValueError:<br/>                exception_name = b&#x27;SubprocessError&#x27;<br/>                hex_errno = b&#x27;0&#x27;<br/>                err_msg = &#x27;Bad exception data from child: {!r}&#x27;.format(<br/>                              bytes(errpipe_data))<br/>            child_exception_type = getattr(<br/>                    builtins, exception_name.decode(&#x27;ascii&#x27;),<br/>                    SubprocessError)<br/>            if issubclass(child_exception_type, OSError) and hex_errno:<br/>                errno_num = int(hex_errno, 16)<br/>                if err_msg == &quot;noexec:chdir&quot;:<br/>                    err_msg = &quot;&quot;<br/>                    # The error must be from chdir(cwd).<br/>                    err_filename = cwd<br/>                elif err_msg == &quot;noexec&quot;:<br/>                    err_msg = &quot;&quot;<br/>                    err_filename = None<br/>                else:<br/>                    err_filename = orig_executable<br/>                if errno_num != 0:<br/>                    err_msg = os.strerror(errno_num)<br/>                if err_filename is not None:<br/>&gt;                   raise child_exception_type(errno_num, err_msg, err_filename)<br/><span class="error">E                   OSError: [Errno 8] Exec format error: &#x27;/home/runner/.wdm/drivers/chromedriver/linux64/138.0.7204.168/chromedriver-linux64/THIRD_PARTY_NOTICES.chromedriver&#x27;</span><br/><br/>/opt/hostedtoolcache/Python/3.12.11/x64/lib/python3.12/subprocess.py:1955: OSError<br/></div></td></tr></tbody>
+      <tbody class="error results-table-row">
+        <tr>
+          <td class="col-result">Error</td>
+          <td class="col-name">tests/test_e2e.py::TestTeamPages::test_create_team_page_structure::setup</td>
+          <td class="col-duration">0.23</td>
+          <td class="col-links"></td></tr>
+        <tr>
+          <td class="extra" colspan="4">
+            <div class="log">@pytest.fixture(scope=&quot;function&quot;)<br/>    def browser():<br/>        &quot;&quot;&quot;Selenium WebDriver for end-to-end tests&quot;&quot;&quot;<br/>        chrome_options = Options()<br/>        chrome_options.add_argument(&quot;--headless&quot;)<br/>        chrome_options.add_argument(&quot;--no-sandbox&quot;)<br/>        chrome_options.add_argument(&quot;--disable-dev-shm-usage&quot;)<br/>        chrome_options.add_argument(&quot;--disable-gpu&quot;)<br/>        chrome_options.add_argument(&quot;--window-size=1920,1080&quot;)<br/>    <br/>        service = Service(ChromeDriverManager().install())<br/>&gt;       driver = webdriver.Chrome(service=service, options=chrome_options)<br/><br/>tests/conftest.py:41: <br/>_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ <br/>/opt/hostedtoolcache/Python/3.12.11/x64/lib/python3.12/site-packages/selenium/webdriver/chrome/webdriver.py:45: in __init__<br/>    super().__init__(<br/>/opt/hostedtoolcache/Python/3.12.11/x64/lib/python3.12/site-packages/selenium/webdriver/chromium/webdriver.py:53: in __init__<br/>    self.service.start()<br/>/opt/hostedtoolcache/Python/3.12.11/x64/lib/python3.12/site-packages/selenium/webdriver/common/service.py:98: in start<br/>    self._start_process(self._path)<br/>/opt/hostedtoolcache/Python/3.12.11/x64/lib/python3.12/site-packages/selenium/webdriver/common/service.py:204: in _start_process<br/>    self.process = subprocess.Popen(<br/>/opt/hostedtoolcache/Python/3.12.11/x64/lib/python3.12/subprocess.py:1026: in __init__<br/>    self._execute_child(args, executable, preexec_fn, close_fds,<br/>_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ <br/><br/>self = &lt;Popen: returncode: 255 args: [&#x27;/home/runner/.wdm/drivers/chromedriver/linux...&gt;<br/>args = [&#x27;/home/runner/.wdm/drivers/chromedriver/linux64/138.0.7204.168/chromedriver-linux64/THIRD_PARTY_NOTICES.chromedriver&#x27;, &#x27;--port=47113&#x27;]<br/>executable = b&#x27;/home/runner/.wdm/drivers/chromedriver/linux64/138.0.7204.168/chromedriver-linux64/THIRD_PARTY_NOTICES.chromedriver&#x27;<br/>preexec_fn = None, close_fds = True, pass_fds = (), cwd = None<br/>env = environ({&#x27;SHELL&#x27;: &#x27;/bin/bash&#x27;, &#x27;SELENIUM_JAR_PATH&#x27;: &#x27;/usr/share/java/selenium-server.jar&#x27;, &#x27;CONDA&#x27;: &#x27;/usr/share/minico...: &#x27;test_disabled&#x27;, &#x27;PYTEST_CURRENT_TEST&#x27;: &#x27;tests/test_e2e.py::TestTeamPages::test_create_team_page_structure (setup)&#x27;})<br/>startupinfo = None, creationflags = 0, shell = False, p2cread = 14<br/>p2cwrite = 15, c2pread = -1, c2pwrite = 13, errread = -1, errwrite = 13<br/>restore_signals = True, gid = None, gids = None, uid = None, umask = -1<br/>start_new_session = False, process_group = -1<br/><br/>    def _execute_child(self, args, executable, preexec_fn, close_fds,<br/>                       pass_fds, cwd, env,<br/>                       startupinfo, creationflags, shell,<br/>                       p2cread, p2cwrite,<br/>                       c2pread, c2pwrite,<br/>                       errread, errwrite,<br/>                       restore_signals,<br/>                       gid, gids, uid, umask,<br/>                       start_new_session, process_group):<br/>        &quot;&quot;&quot;Execute program (POSIX version)&quot;&quot;&quot;<br/>    <br/>        if isinstance(args, (str, bytes)):<br/>            args = [args]<br/>        elif isinstance(args, os.PathLike):<br/>            if shell:<br/>                raise TypeError(&#x27;path-like args is not allowed when &#x27;<br/>                                &#x27;shell is true&#x27;)<br/>            args = [args]<br/>        else:<br/>            args = list(args)<br/>    <br/>        if shell:<br/>            # On Android the default shell is at &#x27;/system/bin/sh&#x27;.<br/>            unix_shell = (&#x27;/system/bin/sh&#x27; if<br/>                      hasattr(sys, &#x27;getandroidapilevel&#x27;) else &#x27;/bin/sh&#x27;)<br/>            args = [unix_shell, &quot;-c&quot;] + args<br/>            if executable:<br/>                args[0] = executable<br/>    <br/>        if executable is None:<br/>            executable = args[0]<br/>    <br/>        sys.audit(&quot;subprocess.Popen&quot;, executable, args, cwd, env)<br/>    <br/>        if (_USE_POSIX_SPAWN<br/>                and os.path.dirname(executable)<br/>                and preexec_fn is None<br/>                and not close_fds<br/>                and not pass_fds<br/>                and cwd is None<br/>                and (p2cread == -1 or p2cread &gt; 2)<br/>                and (c2pwrite == -1 or c2pwrite &gt; 2)<br/>                and (errwrite == -1 or errwrite &gt; 2)<br/>                and not start_new_session<br/>                and process_group == -1<br/>                and gid is None<br/>                and gids is None<br/>                and uid is None<br/>                and umask &lt; 0):<br/>            self._posix_spawn(args, executable, env, restore_signals,<br/>                              p2cread, p2cwrite,<br/>                              c2pread, c2pwrite,<br/>                              errread, errwrite)<br/>            return<br/>    <br/>        orig_executable = executable<br/>    <br/>        # For transferring possible exec failure from child to parent.<br/>        # Data format: &quot;exception name:hex errno:description&quot;<br/>        # Pickle is not used; it is complex and involves memory allocation.<br/>        errpipe_read, errpipe_write = os.pipe()<br/>        # errpipe_write must not be in the standard io 0, 1, or 2 fd range.<br/>        low_fds_to_close = []<br/>        while errpipe_write &lt; 3:<br/>            low_fds_to_close.append(errpipe_write)<br/>            errpipe_write = os.dup(errpipe_write)<br/>        for low_fd in low_fds_to_close:<br/>            os.close(low_fd)<br/>        try:<br/>            try:<br/>                # We must avoid complex work that could involve<br/>                # malloc or free in the child process to avoid<br/>                # potential deadlocks, thus we do all this here.<br/>                # and pass it to fork_exec()<br/>    <br/>                if env is not None:<br/>                    env_list = []<br/>                    for k, v in env.items():<br/>                        k = os.fsencode(k)<br/>                        if b&#x27;=&#x27; in k:<br/>                            raise ValueError(&quot;illegal environment variable name&quot;)<br/>                        env_list.append(k + b&#x27;=&#x27; + os.fsencode(v))<br/>                else:<br/>                    env_list = None  # Use execv instead of execve.<br/>                executable = os.fsencode(executable)<br/>                if os.path.dirname(executable):<br/>                    executable_list = (executable,)<br/>                else:<br/>                    # This matches the behavior of os._execvpe().<br/>                    executable_list = tuple(<br/>                        os.path.join(os.fsencode(dir), executable)<br/>                        for dir in os.get_exec_path(env))<br/>                fds_to_keep = set(pass_fds)<br/>                fds_to_keep.add(errpipe_write)<br/>                self.pid = _fork_exec(<br/>                        args, executable_list,<br/>                        close_fds, tuple(sorted(map(int, fds_to_keep))),<br/>                        cwd, env_list,<br/>                        p2cread, p2cwrite, c2pread, c2pwrite,<br/>                        errread, errwrite,<br/>                        errpipe_read, errpipe_write,<br/>                        restore_signals, start_new_session,<br/>                        process_group, gid, gids, uid, umask,<br/>                        preexec_fn, _USE_VFORK)<br/>                self._child_created = True<br/>            finally:<br/>                # be sure the FD is closed no matter what<br/>                os.close(errpipe_write)<br/>    <br/>            self._close_pipe_fds(p2cread, p2cwrite,<br/>                                 c2pread, c2pwrite,<br/>                                 errread, errwrite)<br/>    <br/>            # Wait for exec to fail or succeed; possibly raising an<br/>            # exception (limited in size)<br/>            errpipe_data = bytearray()<br/>            while True:<br/>                part = os.read(errpipe_read, 50000)<br/>                errpipe_data += part<br/>                if not part or len(errpipe_data) &gt; 50000:<br/>                    break<br/>        finally:<br/>            # be sure the FD is closed no matter what<br/>            os.close(errpipe_read)<br/>    <br/>        if errpipe_data:<br/>            try:<br/>                pid, sts = os.waitpid(self.pid, 0)<br/>                if pid == self.pid:<br/>                    self._handle_exitstatus(sts)<br/>                else:<br/>                    self.returncode = sys.maxsize<br/>            except ChildProcessError:<br/>                pass<br/>    <br/>            try:<br/>                exception_name, hex_errno, err_msg = (<br/>                        errpipe_data.split(b&#x27;:&#x27;, 2))<br/>                # The encoding here should match the encoding<br/>                # written in by the subprocess implementations<br/>                # like _posixsubprocess<br/>                err_msg = err_msg.decode()<br/>            except ValueError:<br/>                exception_name = b&#x27;SubprocessError&#x27;<br/>                hex_errno = b&#x27;0&#x27;<br/>                err_msg = &#x27;Bad exception data from child: {!r}&#x27;.format(<br/>                              bytes(errpipe_data))<br/>            child_exception_type = getattr(<br/>                    builtins, exception_name.decode(&#x27;ascii&#x27;),<br/>                    SubprocessError)<br/>            if issubclass(child_exception_type, OSError) and hex_errno:<br/>                errno_num = int(hex_errno, 16)<br/>                if err_msg == &quot;noexec:chdir&quot;:<br/>                    err_msg = &quot;&quot;<br/>                    # The error must be from chdir(cwd).<br/>                    err_filename = cwd<br/>                elif err_msg == &quot;noexec&quot;:<br/>                    err_msg = &quot;&quot;<br/>                    err_filename = None<br/>                else:<br/>                    err_filename = orig_executable<br/>                if errno_num != 0:<br/>                    err_msg = os.strerror(errno_num)<br/>                if err_filename is not None:<br/>&gt;                   raise child_exception_type(errno_num, err_msg, err_filename)<br/><span class="error">E                   OSError: [Errno 8] Exec format error: &#x27;/home/runner/.wdm/drivers/chromedriver/linux64/138.0.7204.168/chromedriver-linux64/THIRD_PARTY_NOTICES.chromedriver&#x27;</span><br/><br/>/opt/hostedtoolcache/Python/3.12.11/x64/lib/python3.12/subprocess.py:1955: OSError<br/></div></td></tr></tbody>
+      <tbody class="error results-table-row">
+        <tr>
+          <td class="col-result">Error</td>
+          <td class="col-name">tests/test_e2e.py::TestResponsiveDesign::test_mobile_viewport::setup</td>
+          <td class="col-duration">0.19</td>
+          <td class="col-links"></td></tr>
+        <tr>
+          <td class="extra" colspan="4">
+            <div class="log">@pytest.fixture(scope=&quot;function&quot;)<br/>    def browser():<br/>        &quot;&quot;&quot;Selenium WebDriver for end-to-end tests&quot;&quot;&quot;<br/>        chrome_options = Options()<br/>        chrome_options.add_argument(&quot;--headless&quot;)<br/>        chrome_options.add_argument(&quot;--no-sandbox&quot;)<br/>        chrome_options.add_argument(&quot;--disable-dev-shm-usage&quot;)<br/>        chrome_options.add_argument(&quot;--disable-gpu&quot;)<br/>        chrome_options.add_argument(&quot;--window-size=1920,1080&quot;)<br/>    <br/>        service = Service(ChromeDriverManager().install())<br/>&gt;       driver = webdriver.Chrome(service=service, options=chrome_options)<br/><br/>tests/conftest.py:41: <br/>_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ <br/>/opt/hostedtoolcache/Python/3.12.11/x64/lib/python3.12/site-packages/selenium/webdriver/chrome/webdriver.py:45: in __init__<br/>    super().__init__(<br/>/opt/hostedtoolcache/Python/3.12.11/x64/lib/python3.12/site-packages/selenium/webdriver/chromium/webdriver.py:53: in __init__<br/>    self.service.start()<br/>/opt/hostedtoolcache/Python/3.12.11/x64/lib/python3.12/site-packages/selenium/webdriver/common/service.py:98: in start<br/>    self._start_process(self._path)<br/>/opt/hostedtoolcache/Python/3.12.11/x64/lib/python3.12/site-packages/selenium/webdriver/common/service.py:204: in _start_process<br/>    self.process = subprocess.Popen(<br/>/opt/hostedtoolcache/Python/3.12.11/x64/lib/python3.12/subprocess.py:1026: in __init__<br/>    self._execute_child(args, executable, preexec_fn, close_fds,<br/>_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ <br/><br/>self = &lt;Popen: returncode: 255 args: [&#x27;/home/runner/.wdm/drivers/chromedriver/linux...&gt;<br/>args = [&#x27;/home/runner/.wdm/drivers/chromedriver/linux64/138.0.7204.168/chromedriver-linux64/THIRD_PARTY_NOTICES.chromedriver&#x27;, &#x27;--port=36367&#x27;]<br/>executable = b&#x27;/home/runner/.wdm/drivers/chromedriver/linux64/138.0.7204.168/chromedriver-linux64/THIRD_PARTY_NOTICES.chromedriver&#x27;<br/>preexec_fn = None, close_fds = True, pass_fds = (), cwd = None<br/>env = environ({&#x27;SHELL&#x27;: &#x27;/bin/bash&#x27;, &#x27;SELENIUM_JAR_PATH&#x27;: &#x27;/usr/share/java/selenium-server.jar&#x27;, &#x27;CONDA&#x27;: &#x27;/usr/share/minico..._ID&#x27;: &#x27;test_disabled&#x27;, &#x27;PYTEST_CURRENT_TEST&#x27;: &#x27;tests/test_e2e.py::TestResponsiveDesign::test_mobile_viewport (setup)&#x27;})<br/>startupinfo = None, creationflags = 0, shell = False, p2cread = 14<br/>p2cwrite = 15, c2pread = -1, c2pwrite = 12, errread = -1, errwrite = 12<br/>restore_signals = True, gid = None, gids = None, uid = None, umask = -1<br/>start_new_session = False, process_group = -1<br/><br/>    def _execute_child(self, args, executable, preexec_fn, close_fds,<br/>                       pass_fds, cwd, env,<br/>                       startupinfo, creationflags, shell,<br/>                       p2cread, p2cwrite,<br/>                       c2pread, c2pwrite,<br/>                       errread, errwrite,<br/>                       restore_signals,<br/>                       gid, gids, uid, umask,<br/>                       start_new_session, process_group):<br/>        &quot;&quot;&quot;Execute program (POSIX version)&quot;&quot;&quot;<br/>    <br/>        if isinstance(args, (str, bytes)):<br/>            args = [args]<br/>        elif isinstance(args, os.PathLike):<br/>            if shell:<br/>                raise TypeError(&#x27;path-like args is not allowed when &#x27;<br/>                                &#x27;shell is true&#x27;)<br/>            args = [args]<br/>        else:<br/>            args = list(args)<br/>    <br/>        if shell:<br/>            # On Android the default shell is at &#x27;/system/bin/sh&#x27;.<br/>            unix_shell = (&#x27;/system/bin/sh&#x27; if<br/>                      hasattr(sys, &#x27;getandroidapilevel&#x27;) else &#x27;/bin/sh&#x27;)<br/>            args = [unix_shell, &quot;-c&quot;] + args<br/>            if executable:<br/>                args[0] = executable<br/>    <br/>        if executable is None:<br/>            executable = args[0]<br/>    <br/>        sys.audit(&quot;subprocess.Popen&quot;, executable, args, cwd, env)<br/>    <br/>        if (_USE_POSIX_SPAWN<br/>                and os.path.dirname(executable)<br/>                and preexec_fn is None<br/>                and not close_fds<br/>                and not pass_fds<br/>                and cwd is None<br/>                and (p2cread == -1 or p2cread &gt; 2)<br/>                and (c2pwrite == -1 or c2pwrite &gt; 2)<br/>                and (errwrite == -1 or errwrite &gt; 2)<br/>                and not start_new_session<br/>                and process_group == -1<br/>                and gid is None<br/>                and gids is None<br/>                and uid is None<br/>                and umask &lt; 0):<br/>            self._posix_spawn(args, executable, env, restore_signals,<br/>                              p2cread, p2cwrite,<br/>                              c2pread, c2pwrite,<br/>                              errread, errwrite)<br/>            return<br/>    <br/>        orig_executable = executable<br/>    <br/>        # For transferring possible exec failure from child to parent.<br/>        # Data format: &quot;exception name:hex errno:description&quot;<br/>        # Pickle is not used; it is complex and involves memory allocation.<br/>        errpipe_read, errpipe_write = os.pipe()<br/>        # errpipe_write must not be in the standard io 0, 1, or 2 fd range.<br/>        low_fds_to_close = []<br/>        while errpipe_write &lt; 3:<br/>            low_fds_to_close.append(errpipe_write)<br/>            errpipe_write = os.dup(errpipe_write)<br/>        for low_fd in low_fds_to_close:<br/>            os.close(low_fd)<br/>        try:<br/>            try:<br/>                # We must avoid complex work that could involve<br/>                # malloc or free in the child process to avoid<br/>                # potential deadlocks, thus we do all this here.<br/>                # and pass it to fork_exec()<br/>    <br/>                if env is not None:<br/>                    env_list = []<br/>                    for k, v in env.items():<br/>                        k = os.fsencode(k)<br/>                        if b&#x27;=&#x27; in k:<br/>                            raise ValueError(&quot;illegal environment variable name&quot;)<br/>                        env_list.append(k + b&#x27;=&#x27; + os.fsencode(v))<br/>                else:<br/>                    env_list = None  # Use execv instead of execve.<br/>                executable = os.fsencode(executable)<br/>                if os.path.dirname(executable):<br/>                    executable_list = (executable,)<br/>                else:<br/>                    # This matches the behavior of os._execvpe().<br/>                    executable_list = tuple(<br/>                        os.path.join(os.fsencode(dir), executable)<br/>                        for dir in os.get_exec_path(env))<br/>                fds_to_keep = set(pass_fds)<br/>                fds_to_keep.add(errpipe_write)<br/>                self.pid = _fork_exec(<br/>                        args, executable_list,<br/>                        close_fds, tuple(sorted(map(int, fds_to_keep))),<br/>                        cwd, env_list,<br/>                        p2cread, p2cwrite, c2pread, c2pwrite,<br/>                        errread, errwrite,<br/>                        errpipe_read, errpipe_write,<br/>                        restore_signals, start_new_session,<br/>                        process_group, gid, gids, uid, umask,<br/>                        preexec_fn, _USE_VFORK)<br/>                self._child_created = True<br/>            finally:<br/>                # be sure the FD is closed no matter what<br/>                os.close(errpipe_write)<br/>    <br/>            self._close_pipe_fds(p2cread, p2cwrite,<br/>                                 c2pread, c2pwrite,<br/>                                 errread, errwrite)<br/>    <br/>            # Wait for exec to fail or succeed; possibly raising an<br/>            # exception (limited in size)<br/>            errpipe_data = bytearray()<br/>            while True:<br/>                part = os.read(errpipe_read, 50000)<br/>                errpipe_data += part<br/>                if not part or len(errpipe_data) &gt; 50000:<br/>                    break<br/>        finally:<br/>            # be sure the FD is closed no matter what<br/>            os.close(errpipe_read)<br/>    <br/>        if errpipe_data:<br/>            try:<br/>                pid, sts = os.waitpid(self.pid, 0)<br/>                if pid == self.pid:<br/>                    self._handle_exitstatus(sts)<br/>                else:<br/>                    self.returncode = sys.maxsize<br/>            except ChildProcessError:<br/>                pass<br/>    <br/>            try:<br/>                exception_name, hex_errno, err_msg = (<br/>                        errpipe_data.split(b&#x27;:&#x27;, 2))<br/>                # The encoding here should match the encoding<br/>                # written in by the subprocess implementations<br/>                # like _posixsubprocess<br/>                err_msg = err_msg.decode()<br/>            except ValueError:<br/>                exception_name = b&#x27;SubprocessError&#x27;<br/>                hex_errno = b&#x27;0&#x27;<br/>                err_msg = &#x27;Bad exception data from child: {!r}&#x27;.format(<br/>                              bytes(errpipe_data))<br/>            child_exception_type = getattr(<br/>                    builtins, exception_name.decode(&#x27;ascii&#x27;),<br/>                    SubprocessError)<br/>            if issubclass(child_exception_type, OSError) and hex_errno:<br/>                errno_num = int(hex_errno, 16)<br/>                if err_msg == &quot;noexec:chdir&quot;:<br/>                    err_msg = &quot;&quot;<br/>                    # The error must be from chdir(cwd).<br/>                    err_filename = cwd<br/>                elif err_msg == &quot;noexec&quot;:<br/>                    err_msg = &quot;&quot;<br/>                    err_filename = None<br/>                else:<br/>                    err_filename = orig_executable<br/>                if errno_num != 0:<br/>                    err_msg = os.strerror(errno_num)<br/>                if err_filename is not None:<br/>&gt;                   raise child_exception_type(errno_num, err_msg, err_filename)<br/><span class="error">E                   OSError: [Errno 8] Exec format error: &#x27;/home/runner/.wdm/drivers/chromedriver/linux64/138.0.7204.168/chromedriver-linux64/THIRD_PARTY_NOTICES.chromedriver&#x27;</span><br/><br/>/opt/hostedtoolcache/Python/3.12.11/x64/lib/python3.12/subprocess.py:1955: OSError<br/></div></td></tr></tbody>
+      <tbody class="error results-table-row">
+        <tr>
+          <td class="col-result">Error</td>
+          <td class="col-name">tests/test_e2e.py::TestResponsiveDesign::test_desktop_viewport::setup</td>
+          <td class="col-duration">0.18</td>
+          <td class="col-links"></td></tr>
+        <tr>
+          <td class="extra" colspan="4">
+            <div class="log">@pytest.fixture(scope=&quot;function&quot;)<br/>    def browser():<br/>        &quot;&quot;&quot;Selenium WebDriver for end-to-end tests&quot;&quot;&quot;<br/>        chrome_options = Options()<br/>        chrome_options.add_argument(&quot;--headless&quot;)<br/>        chrome_options.add_argument(&quot;--no-sandbox&quot;)<br/>        chrome_options.add_argument(&quot;--disable-dev-shm-usage&quot;)<br/>        chrome_options.add_argument(&quot;--disable-gpu&quot;)<br/>        chrome_options.add_argument(&quot;--window-size=1920,1080&quot;)<br/>    <br/>        service = Service(ChromeDriverManager().install())<br/>&gt;       driver = webdriver.Chrome(service=service, options=chrome_options)<br/><br/>tests/conftest.py:41: <br/>_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ <br/>/opt/hostedtoolcache/Python/3.12.11/x64/lib/python3.12/site-packages/selenium/webdriver/chrome/webdriver.py:45: in __init__<br/>    super().__init__(<br/>/opt/hostedtoolcache/Python/3.12.11/x64/lib/python3.12/site-packages/selenium/webdriver/chromium/webdriver.py:53: in __init__<br/>    self.service.start()<br/>/opt/hostedtoolcache/Python/3.12.11/x64/lib/python3.12/site-packages/selenium/webdriver/common/service.py:98: in start<br/>    self._start_process(self._path)<br/>/opt/hostedtoolcache/Python/3.12.11/x64/lib/python3.12/site-packages/selenium/webdriver/common/service.py:204: in _start_process<br/>    self.process = subprocess.Popen(<br/>/opt/hostedtoolcache/Python/3.12.11/x64/lib/python3.12/subprocess.py:1026: in __init__<br/>    self._execute_child(args, executable, preexec_fn, close_fds,<br/>_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ <br/><br/>self = &lt;Popen: returncode: 255 args: [&#x27;/home/runner/.wdm/drivers/chromedriver/linux...&gt;<br/>args = [&#x27;/home/runner/.wdm/drivers/chromedriver/linux64/138.0.7204.168/chromedriver-linux64/THIRD_PARTY_NOTICES.chromedriver&#x27;, &#x27;--port=40449&#x27;]<br/>executable = b&#x27;/home/runner/.wdm/drivers/chromedriver/linux64/138.0.7204.168/chromedriver-linux64/THIRD_PARTY_NOTICES.chromedriver&#x27;<br/>preexec_fn = None, close_fds = True, pass_fds = (), cwd = None<br/>env = environ({&#x27;SHELL&#x27;: &#x27;/bin/bash&#x27;, &#x27;SELENIUM_JAR_PATH&#x27;: &#x27;/usr/share/java/selenium-server.jar&#x27;, &#x27;CONDA&#x27;: &#x27;/usr/share/minico...ID&#x27;: &#x27;test_disabled&#x27;, &#x27;PYTEST_CURRENT_TEST&#x27;: &#x27;tests/test_e2e.py::TestResponsiveDesign::test_desktop_viewport (setup)&#x27;})<br/>startupinfo = None, creationflags = 0, shell = False, p2cread = 15<br/>p2cwrite = 16, c2pread = -1, c2pwrite = 14, errread = -1, errwrite = 14<br/>restore_signals = True, gid = None, gids = None, uid = None, umask = -1<br/>start_new_session = False, process_group = -1<br/><br/>    def _execute_child(self, args, executable, preexec_fn, close_fds,<br/>                       pass_fds, cwd, env,<br/>                       startupinfo, creationflags, shell,<br/>                       p2cread, p2cwrite,<br/>                       c2pread, c2pwrite,<br/>                       errread, errwrite,<br/>                       restore_signals,<br/>                       gid, gids, uid, umask,<br/>                       start_new_session, process_group):<br/>        &quot;&quot;&quot;Execute program (POSIX version)&quot;&quot;&quot;<br/>    <br/>        if isinstance(args, (str, bytes)):<br/>            args = [args]<br/>        elif isinstance(args, os.PathLike):<br/>            if shell:<br/>                raise TypeError(&#x27;path-like args is not allowed when &#x27;<br/>                                &#x27;shell is true&#x27;)<br/>            args = [args]<br/>        else:<br/>            args = list(args)<br/>    <br/>        if shell:<br/>            # On Android the default shell is at &#x27;/system/bin/sh&#x27;.<br/>            unix_shell = (&#x27;/system/bin/sh&#x27; if<br/>                      hasattr(sys, &#x27;getandroidapilevel&#x27;) else &#x27;/bin/sh&#x27;)<br/>            args = [unix_shell, &quot;-c&quot;] + args<br/>            if executable:<br/>                args[0] = executable<br/>    <br/>        if executable is None:<br/>            executable = args[0]<br/>    <br/>        sys.audit(&quot;subprocess.Popen&quot;, executable, args, cwd, env)<br/>    <br/>        if (_USE_POSIX_SPAWN<br/>                and os.path.dirname(executable)<br/>                and preexec_fn is None<br/>                and not close_fds<br/>                and not pass_fds<br/>                and cwd is None<br/>                and (p2cread == -1 or p2cread &gt; 2)<br/>                and (c2pwrite == -1 or c2pwrite &gt; 2)<br/>                and (errwrite == -1 or errwrite &gt; 2)<br/>                and not start_new_session<br/>                and process_group == -1<br/>                and gid is None<br/>                and gids is None<br/>                and uid is None<br/>                and umask &lt; 0):<br/>            self._posix_spawn(args, executable, env, restore_signals,<br/>                              p2cread, p2cwrite,<br/>                              c2pread, c2pwrite,<br/>                              errread, errwrite)<br/>            return<br/>    <br/>        orig_executable = executable<br/>    <br/>        # For transferring possible exec failure from child to parent.<br/>        # Data format: &quot;exception name:hex errno:description&quot;<br/>        # Pickle is not used; it is complex and involves memory allocation.<br/>        errpipe_read, errpipe_write = os.pipe()<br/>        # errpipe_write must not be in the standard io 0, 1, or 2 fd range.<br/>        low_fds_to_close = []<br/>        while errpipe_write &lt; 3:<br/>            low_fds_to_close.append(errpipe_write)<br/>            errpipe_write = os.dup(errpipe_write)<br/>        for low_fd in low_fds_to_close:<br/>            os.close(low_fd)<br/>        try:<br/>            try:<br/>                # We must avoid complex work that could involve<br/>                # malloc or free in the child process to avoid<br/>                # potential deadlocks, thus we do all this here.<br/>                # and pass it to fork_exec()<br/>    <br/>                if env is not None:<br/>                    env_list = []<br/>                    for k, v in env.items():<br/>                        k = os.fsencode(k)<br/>                        if b&#x27;=&#x27; in k:<br/>                            raise ValueError(&quot;illegal environment variable name&quot;)<br/>                        env_list.append(k + b&#x27;=&#x27; + os.fsencode(v))<br/>                else:<br/>                    env_list = None  # Use execv instead of execve.<br/>                executable = os.fsencode(executable)<br/>                if os.path.dirname(executable):<br/>                    executable_list = (executable,)<br/>                else:<br/>                    # This matches the behavior of os._execvpe().<br/>                    executable_list = tuple(<br/>                        os.path.join(os.fsencode(dir), executable)<br/>                        for dir in os.get_exec_path(env))<br/>                fds_to_keep = set(pass_fds)<br/>                fds_to_keep.add(errpipe_write)<br/>                self.pid = _fork_exec(<br/>                        args, executable_list,<br/>                        close_fds, tuple(sorted(map(int, fds_to_keep))),<br/>                        cwd, env_list,<br/>                        p2cread, p2cwrite, c2pread, c2pwrite,<br/>                        errread, errwrite,<br/>                        errpipe_read, errpipe_write,<br/>                        restore_signals, start_new_session,<br/>                        process_group, gid, gids, uid, umask,<br/>                        preexec_fn, _USE_VFORK)<br/>                self._child_created = True<br/>            finally:<br/>                # be sure the FD is closed no matter what<br/>                os.close(errpipe_write)<br/>    <br/>            self._close_pipe_fds(p2cread, p2cwrite,<br/>                                 c2pread, c2pwrite,<br/>                                 errread, errwrite)<br/>    <br/>            # Wait for exec to fail or succeed; possibly raising an<br/>            # exception (limited in size)<br/>            errpipe_data = bytearray()<br/>            while True:<br/>                part = os.read(errpipe_read, 50000)<br/>                errpipe_data += part<br/>                if not part or len(errpipe_data) &gt; 50000:<br/>                    break<br/>        finally:<br/>            # be sure the FD is closed no matter what<br/>            os.close(errpipe_read)<br/>    <br/>        if errpipe_data:<br/>            try:<br/>                pid, sts = os.waitpid(self.pid, 0)<br/>                if pid == self.pid:<br/>                    self._handle_exitstatus(sts)<br/>                else:<br/>                    self.returncode = sys.maxsize<br/>            except ChildProcessError:<br/>                pass<br/>    <br/>            try:<br/>                exception_name, hex_errno, err_msg = (<br/>                        errpipe_data.split(b&#x27;:&#x27;, 2))<br/>                # The encoding here should match the encoding<br/>                # written in by the subprocess implementations<br/>                # like _posixsubprocess<br/>                err_msg = err_msg.decode()<br/>            except ValueError:<br/>                exception_name = b&#x27;SubprocessError&#x27;<br/>                hex_errno = b&#x27;0&#x27;<br/>                err_msg = &#x27;Bad exception data from child: {!r}&#x27;.format(<br/>                              bytes(errpipe_data))<br/>            child_exception_type = getattr(<br/>                    builtins, exception_name.decode(&#x27;ascii&#x27;),<br/>                    SubprocessError)<br/>            if issubclass(child_exception_type, OSError) and hex_errno:<br/>                errno_num = int(hex_errno, 16)<br/>                if err_msg == &quot;noexec:chdir&quot;:<br/>                    err_msg = &quot;&quot;<br/>                    # The error must be from chdir(cwd).<br/>                    err_filename = cwd<br/>                elif err_msg == &quot;noexec&quot;:<br/>                    err_msg = &quot;&quot;<br/>                    err_filename = None<br/>                else:<br/>                    err_filename = orig_executable<br/>                if errno_num != 0:<br/>                    err_msg = os.strerror(errno_num)<br/>                if err_filename is not None:<br/>&gt;                   raise child_exception_type(errno_num, err_msg, err_filename)<br/><span class="error">E                   OSError: [Errno 8] Exec format error: &#x27;/home/runner/.wdm/drivers/chromedriver/linux64/138.0.7204.168/chromedriver-linux64/THIRD_PARTY_NOTICES.chromedriver&#x27;</span><br/><br/>/opt/hostedtoolcache/Python/3.12.11/x64/lib/python3.12/subprocess.py:1955: OSError<br/></div></td></tr></tbody>
+      <tbody class="error results-table-row">
+        <tr>
+          <td class="col-result">Error</td>
+          <td class="col-name">tests/test_e2e.py::TestErrorPages::test_404_page_handling::setup</td>
+          <td class="col-duration">0.18</td>
+          <td class="col-links"></td></tr>
+        <tr>
+          <td class="extra" colspan="4">
+            <div class="log">@pytest.fixture(scope=&quot;function&quot;)<br/>    def browser():<br/>        &quot;&quot;&quot;Selenium WebDriver for end-to-end tests&quot;&quot;&quot;<br/>        chrome_options = Options()<br/>        chrome_options.add_argument(&quot;--headless&quot;)<br/>        chrome_options.add_argument(&quot;--no-sandbox&quot;)<br/>        chrome_options.add_argument(&quot;--disable-dev-shm-usage&quot;)<br/>        chrome_options.add_argument(&quot;--disable-gpu&quot;)<br/>        chrome_options.add_argument(&quot;--window-size=1920,1080&quot;)<br/>    <br/>        service = Service(ChromeDriverManager().install())<br/>&gt;       driver = webdriver.Chrome(service=service, options=chrome_options)<br/><br/>tests/conftest.py:41: <br/>_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ <br/>/opt/hostedtoolcache/Python/3.12.11/x64/lib/python3.12/site-packages/selenium/webdriver/chrome/webdriver.py:45: in __init__<br/>    super().__init__(<br/>/opt/hostedtoolcache/Python/3.12.11/x64/lib/python3.12/site-packages/selenium/webdriver/chromium/webdriver.py:53: in __init__<br/>    self.service.start()<br/>/opt/hostedtoolcache/Python/3.12.11/x64/lib/python3.12/site-packages/selenium/webdriver/common/service.py:98: in start<br/>    self._start_process(self._path)<br/>/opt/hostedtoolcache/Python/3.12.11/x64/lib/python3.12/site-packages/selenium/webdriver/common/service.py:204: in _start_process<br/>    self.process = subprocess.Popen(<br/>/opt/hostedtoolcache/Python/3.12.11/x64/lib/python3.12/subprocess.py:1026: in __init__<br/>    self._execute_child(args, executable, preexec_fn, close_fds,<br/>_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ <br/><br/>self = &lt;Popen: returncode: 255 args: [&#x27;/home/runner/.wdm/drivers/chromedriver/linux...&gt;<br/>args = [&#x27;/home/runner/.wdm/drivers/chromedriver/linux64/138.0.7204.168/chromedriver-linux64/THIRD_PARTY_NOTICES.chromedriver&#x27;, &#x27;--port=44913&#x27;]<br/>executable = b&#x27;/home/runner/.wdm/drivers/chromedriver/linux64/138.0.7204.168/chromedriver-linux64/THIRD_PARTY_NOTICES.chromedriver&#x27;<br/>preexec_fn = None, close_fds = True, pass_fds = (), cwd = None<br/>env = environ({&#x27;SHELL&#x27;: &#x27;/bin/bash&#x27;, &#x27;SELENIUM_JAR_PATH&#x27;: &#x27;/usr/share/java/selenium-server.jar&#x27;, &#x27;CONDA&#x27;: &#x27;/usr/share/minico...IENT_ID&#x27;: &#x27;test_disabled&#x27;, &#x27;PYTEST_CURRENT_TEST&#x27;: &#x27;tests/test_e2e.py::TestErrorPages::test_404_page_handling (setup)&#x27;})<br/>startupinfo = None, creationflags = 0, shell = False, p2cread = 15<br/>p2cwrite = 16, c2pread = -1, c2pwrite = 12, errread = -1, errwrite = 12<br/>restore_signals = True, gid = None, gids = None, uid = None, umask = -1<br/>start_new_session = False, process_group = -1<br/><br/>    def _execute_child(self, args, executable, preexec_fn, close_fds,<br/>                       pass_fds, cwd, env,<br/>                       startupinfo, creationflags, shell,<br/>                       p2cread, p2cwrite,<br/>                       c2pread, c2pwrite,<br/>                       errread, errwrite,<br/>                       restore_signals,<br/>                       gid, gids, uid, umask,<br/>                       start_new_session, process_group):<br/>        &quot;&quot;&quot;Execute program (POSIX version)&quot;&quot;&quot;<br/>    <br/>        if isinstance(args, (str, bytes)):<br/>            args = [args]<br/>        elif isinstance(args, os.PathLike):<br/>            if shell:<br/>                raise TypeError(&#x27;path-like args is not allowed when &#x27;<br/>                                &#x27;shell is true&#x27;)<br/>            args = [args]<br/>        else:<br/>            args = list(args)<br/>    <br/>        if shell:<br/>            # On Android the default shell is at &#x27;/system/bin/sh&#x27;.<br/>            unix_shell = (&#x27;/system/bin/sh&#x27; if<br/>                      hasattr(sys, &#x27;getandroidapilevel&#x27;) else &#x27;/bin/sh&#x27;)<br/>            args = [unix_shell, &quot;-c&quot;] + args<br/>            if executable:<br/>                args[0] = executable<br/>    <br/>        if executable is None:<br/>            executable = args[0]<br/>    <br/>        sys.audit(&quot;subprocess.Popen&quot;, executable, args, cwd, env)<br/>    <br/>        if (_USE_POSIX_SPAWN<br/>                and os.path.dirname(executable)<br/>                and preexec_fn is None<br/>                and not close_fds<br/>                and not pass_fds<br/>                and cwd is None<br/>                and (p2cread == -1 or p2cread &gt; 2)<br/>                and (c2pwrite == -1 or c2pwrite &gt; 2)<br/>                and (errwrite == -1 or errwrite &gt; 2)<br/>                and not start_new_session<br/>                and process_group == -1<br/>                and gid is None<br/>                and gids is None<br/>                and uid is None<br/>                and umask &lt; 0):<br/>            self._posix_spawn(args, executable, env, restore_signals,<br/>                              p2cread, p2cwrite,<br/>                              c2pread, c2pwrite,<br/>                              errread, errwrite)<br/>            return<br/>    <br/>        orig_executable = executable<br/>    <br/>        # For transferring possible exec failure from child to parent.<br/>        # Data format: &quot;exception name:hex errno:description&quot;<br/>        # Pickle is not used; it is complex and involves memory allocation.<br/>        errpipe_read, errpipe_write = os.pipe()<br/>        # errpipe_write must not be in the standard io 0, 1, or 2 fd range.<br/>        low_fds_to_close = []<br/>        while errpipe_write &lt; 3:<br/>            low_fds_to_close.append(errpipe_write)<br/>            errpipe_write = os.dup(errpipe_write)<br/>        for low_fd in low_fds_to_close:<br/>            os.close(low_fd)<br/>        try:<br/>            try:<br/>                # We must avoid complex work that could involve<br/>                # malloc or free in the child process to avoid<br/>                # potential deadlocks, thus we do all this here.<br/>                # and pass it to fork_exec()<br/>    <br/>                if env is not None:<br/>                    env_list = []<br/>                    for k, v in env.items():<br/>                        k = os.fsencode(k)<br/>                        if b&#x27;=&#x27; in k:<br/>                            raise ValueError(&quot;illegal environment variable name&quot;)<br/>                        env_list.append(k + b&#x27;=&#x27; + os.fsencode(v))<br/>                else:<br/>                    env_list = None  # Use execv instead of execve.<br/>                executable = os.fsencode(executable)<br/>                if os.path.dirname(executable):<br/>                    executable_list = (executable,)<br/>                else:<br/>                    # This matches the behavior of os._execvpe().<br/>                    executable_list = tuple(<br/>                        os.path.join(os.fsencode(dir), executable)<br/>                        for dir in os.get_exec_path(env))<br/>                fds_to_keep = set(pass_fds)<br/>                fds_to_keep.add(errpipe_write)<br/>                self.pid = _fork_exec(<br/>                        args, executable_list,<br/>                        close_fds, tuple(sorted(map(int, fds_to_keep))),<br/>                        cwd, env_list,<br/>                        p2cread, p2cwrite, c2pread, c2pwrite,<br/>                        errread, errwrite,<br/>                        errpipe_read, errpipe_write,<br/>                        restore_signals, start_new_session,<br/>                        process_group, gid, gids, uid, umask,<br/>                        preexec_fn, _USE_VFORK)<br/>                self._child_created = True<br/>            finally:<br/>                # be sure the FD is closed no matter what<br/>                os.close(errpipe_write)<br/>    <br/>            self._close_pipe_fds(p2cread, p2cwrite,<br/>                                 c2pread, c2pwrite,<br/>                                 errread, errwrite)<br/>    <br/>            # Wait for exec to fail or succeed; possibly raising an<br/>            # exception (limited in size)<br/>            errpipe_data = bytearray()<br/>            while True:<br/>                part = os.read(errpipe_read, 50000)<br/>                errpipe_data += part<br/>                if not part or len(errpipe_data) &gt; 50000:<br/>                    break<br/>        finally:<br/>            # be sure the FD is closed no matter what<br/>            os.close(errpipe_read)<br/>    <br/>        if errpipe_data:<br/>            try:<br/>                pid, sts = os.waitpid(self.pid, 0)<br/>                if pid == self.pid:<br/>                    self._handle_exitstatus(sts)<br/>                else:<br/>                    self.returncode = sys.maxsize<br/>            except ChildProcessError:<br/>                pass<br/>    <br/>            try:<br/>                exception_name, hex_errno, err_msg = (<br/>                        errpipe_data.split(b&#x27;:&#x27;, 2))<br/>                # The encoding here should match the encoding<br/>                # written in by the subprocess implementations<br/>                # like _posixsubprocess<br/>                err_msg = err_msg.decode()<br/>            except ValueError:<br/>                exception_name = b&#x27;SubprocessError&#x27;<br/>                hex_errno = b&#x27;0&#x27;<br/>                err_msg = &#x27;Bad exception data from child: {!r}&#x27;.format(<br/>                              bytes(errpipe_data))<br/>            child_exception_type = getattr(<br/>                    builtins, exception_name.decode(&#x27;ascii&#x27;),<br/>                    SubprocessError)<br/>            if issubclass(child_exception_type, OSError) and hex_errno:<br/>                errno_num = int(hex_errno, 16)<br/>                if err_msg == &quot;noexec:chdir&quot;:<br/>                    err_msg = &quot;&quot;<br/>                    # The error must be from chdir(cwd).<br/>                    err_filename = cwd<br/>                elif err_msg == &quot;noexec&quot;:<br/>                    err_msg = &quot;&quot;<br/>                    err_filename = None<br/>                else:<br/>                    err_filename = orig_executable<br/>                if errno_num != 0:<br/>                    err_msg = os.strerror(errno_num)<br/>                if err_filename is not None:<br/>&gt;                   raise child_exception_type(errno_num, err_msg, err_filename)<br/><span class="error">E                   OSError: [Errno 8] Exec format error: &#x27;/home/runner/.wdm/drivers/chromedriver/linux64/138.0.7204.168/chromedriver-linux64/THIRD_PARTY_NOTICES.chromedriver&#x27;</span><br/><br/>/opt/hostedtoolcache/Python/3.12.11/x64/lib/python3.12/subprocess.py:1955: OSError<br/></div></td></tr></tbody>
+      <tbody class="error results-table-row">
+        <tr>
+          <td class="col-result">Error</td>
+          <td class="col-name">tests/test_e2e.py::TestPerformance::test_page_load_time::setup</td>
+          <td class="col-duration">0.20</td>
+          <td class="col-links"></td></tr>
+        <tr>
+          <td class="extra" colspan="4">
+            <div class="log">@pytest.fixture(scope=&quot;function&quot;)<br/>    def browser():<br/>        &quot;&quot;&quot;Selenium WebDriver for end-to-end tests&quot;&quot;&quot;<br/>        chrome_options = Options()<br/>        chrome_options.add_argument(&quot;--headless&quot;)<br/>        chrome_options.add_argument(&quot;--no-sandbox&quot;)<br/>        chrome_options.add_argument(&quot;--disable-dev-shm-usage&quot;)<br/>        chrome_options.add_argument(&quot;--disable-gpu&quot;)<br/>        chrome_options.add_argument(&quot;--window-size=1920,1080&quot;)<br/>    <br/>        service = Service(ChromeDriverManager().install())<br/>&gt;       driver = webdriver.Chrome(service=service, options=chrome_options)<br/><br/>tests/conftest.py:41: <br/>_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ <br/>/opt/hostedtoolcache/Python/3.12.11/x64/lib/python3.12/site-packages/selenium/webdriver/chrome/webdriver.py:45: in __init__<br/>    super().__init__(<br/>/opt/hostedtoolcache/Python/3.12.11/x64/lib/python3.12/site-packages/selenium/webdriver/chromium/webdriver.py:53: in __init__<br/>    self.service.start()<br/>/opt/hostedtoolcache/Python/3.12.11/x64/lib/python3.12/site-packages/selenium/webdriver/common/service.py:98: in start<br/>    self._start_process(self._path)<br/>/opt/hostedtoolcache/Python/3.12.11/x64/lib/python3.12/site-packages/selenium/webdriver/common/service.py:204: in _start_process<br/>    self.process = subprocess.Popen(<br/>/opt/hostedtoolcache/Python/3.12.11/x64/lib/python3.12/subprocess.py:1026: in __init__<br/>    self._execute_child(args, executable, preexec_fn, close_fds,<br/>_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ <br/><br/>self = &lt;Popen: returncode: 255 args: [&#x27;/home/runner/.wdm/drivers/chromedriver/linux...&gt;<br/>args = [&#x27;/home/runner/.wdm/drivers/chromedriver/linux64/138.0.7204.168/chromedriver-linux64/THIRD_PARTY_NOTICES.chromedriver&#x27;, &#x27;--port=53605&#x27;]<br/>executable = b&#x27;/home/runner/.wdm/drivers/chromedriver/linux64/138.0.7204.168/chromedriver-linux64/THIRD_PARTY_NOTICES.chromedriver&#x27;<br/>preexec_fn = None, close_fds = True, pass_fds = (), cwd = None<br/>env = environ({&#x27;SHELL&#x27;: &#x27;/bin/bash&#x27;, &#x27;SELENIUM_JAR_PATH&#x27;: &#x27;/usr/share/java/selenium-server.jar&#x27;, &#x27;CONDA&#x27;: &#x27;/usr/share/minico...CLIENT_ID&#x27;: &#x27;test_disabled&#x27;, &#x27;PYTEST_CURRENT_TEST&#x27;: &#x27;tests/test_e2e.py::TestPerformance::test_page_load_time (setup)&#x27;})<br/>startupinfo = None, creationflags = 0, shell = False, p2cread = 15<br/>p2cwrite = 16, c2pread = -1, c2pwrite = 12, errread = -1, errwrite = 12<br/>restore_signals = True, gid = None, gids = None, uid = None, umask = -1<br/>start_new_session = False, process_group = -1<br/><br/>    def _execute_child(self, args, executable, preexec_fn, close_fds,<br/>                       pass_fds, cwd, env,<br/>                       startupinfo, creationflags, shell,<br/>                       p2cread, p2cwrite,<br/>                       c2pread, c2pwrite,<br/>                       errread, errwrite,<br/>                       restore_signals,<br/>                       gid, gids, uid, umask,<br/>                       start_new_session, process_group):<br/>        &quot;&quot;&quot;Execute program (POSIX version)&quot;&quot;&quot;<br/>    <br/>        if isinstance(args, (str, bytes)):<br/>            args = [args]<br/>        elif isinstance(args, os.PathLike):<br/>            if shell:<br/>                raise TypeError(&#x27;path-like args is not allowed when &#x27;<br/>                                &#x27;shell is true&#x27;)<br/>            args = [args]<br/>        else:<br/>            args = list(args)<br/>    <br/>        if shell:<br/>            # On Android the default shell is at &#x27;/system/bin/sh&#x27;.<br/>            unix_shell = (&#x27;/system/bin/sh&#x27; if<br/>                      hasattr(sys, &#x27;getandroidapilevel&#x27;) else &#x27;/bin/sh&#x27;)<br/>            args = [unix_shell, &quot;-c&quot;] + args<br/>            if executable:<br/>                args[0] = executable<br/>    <br/>        if executable is None:<br/>            executable = args[0]<br/>    <br/>        sys.audit(&quot;subprocess.Popen&quot;, executable, args, cwd, env)<br/>    <br/>        if (_USE_POSIX_SPAWN<br/>                and os.path.dirname(executable)<br/>                and preexec_fn is None<br/>                and not close_fds<br/>                and not pass_fds<br/>                and cwd is None<br/>                and (p2cread == -1 or p2cread &gt; 2)<br/>                and (c2pwrite == -1 or c2pwrite &gt; 2)<br/>                and (errwrite == -1 or errwrite &gt; 2)<br/>                and not start_new_session<br/>                and process_group == -1<br/>                and gid is None<br/>                and gids is None<br/>                and uid is None<br/>                and umask &lt; 0):<br/>            self._posix_spawn(args, executable, env, restore_signals,<br/>                              p2cread, p2cwrite,<br/>                              c2pread, c2pwrite,<br/>                              errread, errwrite)<br/>            return<br/>    <br/>        orig_executable = executable<br/>    <br/>        # For transferring possible exec failure from child to parent.<br/>        # Data format: &quot;exception name:hex errno:description&quot;<br/>        # Pickle is not used; it is complex and involves memory allocation.<br/>        errpipe_read, errpipe_write = os.pipe()<br/>        # errpipe_write must not be in the standard io 0, 1, or 2 fd range.<br/>        low_fds_to_close = []<br/>        while errpipe_write &lt; 3:<br/>            low_fds_to_close.append(errpipe_write)<br/>            errpipe_write = os.dup(errpipe_write)<br/>        for low_fd in low_fds_to_close:<br/>            os.close(low_fd)<br/>        try:<br/>            try:<br/>                # We must avoid complex work that could involve<br/>                # malloc or free in the child process to avoid<br/>                # potential deadlocks, thus we do all this here.<br/>                # and pass it to fork_exec()<br/>    <br/>                if env is not None:<br/>                    env_list = []<br/>                    for k, v in env.items():<br/>                        k = os.fsencode(k)<br/>                        if b&#x27;=&#x27; in k:<br/>                            raise ValueError(&quot;illegal environment variable name&quot;)<br/>                        env_list.append(k + b&#x27;=&#x27; + os.fsencode(v))<br/>                else:<br/>                    env_list = None  # Use execv instead of execve.<br/>                executable = os.fsencode(executable)<br/>                if os.path.dirname(executable):<br/>                    executable_list = (executable,)<br/>                else:<br/>                    # This matches the behavior of os._execvpe().<br/>                    executable_list = tuple(<br/>                        os.path.join(os.fsencode(dir), executable)<br/>                        for dir in os.get_exec_path(env))<br/>                fds_to_keep = set(pass_fds)<br/>                fds_to_keep.add(errpipe_write)<br/>                self.pid = _fork_exec(<br/>                        args, executable_list,<br/>                        close_fds, tuple(sorted(map(int, fds_to_keep))),<br/>                        cwd, env_list,<br/>                        p2cread, p2cwrite, c2pread, c2pwrite,<br/>                        errread, errwrite,<br/>                        errpipe_read, errpipe_write,<br/>                        restore_signals, start_new_session,<br/>                        process_group, gid, gids, uid, umask,<br/>                        preexec_fn, _USE_VFORK)<br/>                self._child_created = True<br/>            finally:<br/>                # be sure the FD is closed no matter what<br/>                os.close(errpipe_write)<br/>    <br/>            self._close_pipe_fds(p2cread, p2cwrite,<br/>                                 c2pread, c2pwrite,<br/>                                 errread, errwrite)<br/>    <br/>            # Wait for exec to fail or succeed; possibly raising an<br/>            # exception (limited in size)<br/>            errpipe_data = bytearray()<br/>            while True:<br/>                part = os.read(errpipe_read, 50000)<br/>                errpipe_data += part<br/>                if not part or len(errpipe_data) &gt; 50000:<br/>                    break<br/>        finally:<br/>            # be sure the FD is closed no matter what<br/>            os.close(errpipe_read)<br/>    <br/>        if errpipe_data:<br/>            try:<br/>                pid, sts = os.waitpid(self.pid, 0)<br/>                if pid == self.pid:<br/>                    self._handle_exitstatus(sts)<br/>                else:<br/>                    self.returncode = sys.maxsize<br/>            except ChildProcessError:<br/>                pass<br/>    <br/>            try:<br/>                exception_name, hex_errno, err_msg = (<br/>                        errpipe_data.split(b&#x27;:&#x27;, 2))<br/>                # The encoding here should match the encoding<br/>                # written in by the subprocess implementations<br/>                # like _posixsubprocess<br/>                err_msg = err_msg.decode()<br/>            except ValueError:<br/>                exception_name = b&#x27;SubprocessError&#x27;<br/>                hex_errno = b&#x27;0&#x27;<br/>                err_msg = &#x27;Bad exception data from child: {!r}&#x27;.format(<br/>                              bytes(errpipe_data))<br/>            child_exception_type = getattr(<br/>                    builtins, exception_name.decode(&#x27;ascii&#x27;),<br/>                    SubprocessError)<br/>            if issubclass(child_exception_type, OSError) and hex_errno:<br/>                errno_num = int(hex_errno, 16)<br/>                if err_msg == &quot;noexec:chdir&quot;:<br/>                    err_msg = &quot;&quot;<br/>                    # The error must be from chdir(cwd).<br/>                    err_filename = cwd<br/>                elif err_msg == &quot;noexec&quot;:<br/>                    err_msg = &quot;&quot;<br/>                    err_filename = None<br/>                else:<br/>                    err_filename = orig_executable<br/>                if errno_num != 0:<br/>                    err_msg = os.strerror(errno_num)<br/>                if err_filename is not None:<br/>&gt;                   raise child_exception_type(errno_num, err_msg, err_filename)<br/><span class="error">E                   OSError: [Errno 8] Exec format error: &#x27;/home/runner/.wdm/drivers/chromedriver/linux64/138.0.7204.168/chromedriver-linux64/THIRD_PARTY_NOTICES.chromedriver&#x27;</span><br/><br/>/opt/hostedtoolcache/Python/3.12.11/x64/lib/python3.12/subprocess.py:1955: OSError<br/></div></td></tr></tbody>
+      <tbody class="failed results-table-row">
+        <tr>
+          <td class="col-result">Failed</td>
+          <td class="col-name">tests/test_api_endpoints.py::TestTeamEndpoints::test_create_team_requires_auth</td>
+          <td class="col-duration">0.00</td>
+          <td class="col-links"></td></tr>
+        <tr>
+          <td class="extra" colspan="4">
+            <div class="log">self = &lt;test_api_endpoints.TestTeamEndpoints object at 0x7f536060ce00&gt;<br/>base_url = &#x27;http://localhost:5000&#x27;<br/>api_client = &lt;requests.sessions.Session object at 0x7f53607d2a50&gt;<br/><br/>    def test_create_team_requires_auth(self, base_url, api_client):<br/>        &quot;&quot;&quot;Test that creating a team requires authentication&quot;&quot;&quot;<br/>        team_data = {<br/>            &#x27;name&#x27;: &#x27;Test Team&#x27;,<br/>            &#x27;description&#x27;: &#x27;Test Description&#x27;<br/>        }<br/>        response = api_client.post(<br/>            urljoin(base_url, &#x27;/team/create&#x27;),<br/>            data=team_data<br/>        )<br/>        # Should redirect to login or return 401/403<br/>&gt;       assert response.status_code in [302, 401, 403]<br/><span class="error">E       assert 200 in [302, 401, 403]</span><br/><span class="error">E        +  where 200 = &lt;Response [200]&gt;.status_code</span><br/><br/>tests/test_api_endpoints.py:40: AssertionError<br/></div></td></tr></tbody>
+      <tbody class="failed results-table-row">
+        <tr>
+          <td class="col-result">Failed</td>
+          <td class="col-name">tests/test_api_endpoints.py::TestAuthEndpoints::test_login_page_accessible</td>
+          <td class="col-duration">0.00</td>
+          <td class="col-links"></td></tr>
+        <tr>
+          <td class="extra" colspan="4">
+            <div class="log">self = &lt;test_api_endpoints.TestAuthEndpoints object at 0x7f536060ddc0&gt;<br/>base_url = &#x27;http://localhost:5000&#x27;<br/>api_client = &lt;requests.sessions.Session object at 0x7f53607d2a50&gt;<br/><br/>    def test_login_page_accessible(self, base_url, api_client):<br/>        &quot;&quot;&quot;Test that login page is accessible&quot;&quot;&quot;<br/>        response = api_client.get(urljoin(base_url, &#x27;/login&#x27;))<br/>&gt;       assert response.status_code == 200<br/><span class="error">E       assert 500 == 200</span><br/><span class="error">E        +  where 500 = &lt;Response [500]&gt;.status_code</span><br/><br/>tests/test_api_endpoints.py:56: AssertionError<br/></div></td></tr></tbody>
+      <tbody class="failed results-table-row">
+        <tr>
+          <td class="col-result">Failed</td>
+          <td class="col-name">tests/test_e2e_simple.py::TestUserInterfaceSimple::test_page_titles_and_content</td>
+          <td class="col-duration">0.00</td>
+          <td class="col-links"></td></tr>
+        <tr>
+          <td class="extra" colspan="4">
+            <div class="log">self = &lt;test_e2e_simple.TestUserInterfaceSimple object at 0x7f5360629fd0&gt;<br/>base_url = &#x27;http://localhost:5000&#x27;<br/>api_client = &lt;requests.sessions.Session object at 0x7f53607d2a50&gt;<br/><br/>    def test_page_titles_and_content(self, base_url, api_client):<br/>        &quot;&quot;&quot;Test that pages have appropriate titles and content&quot;&quot;&quot;<br/>        pages_to_test = [<br/>            (&#x27;/&#x27;, [&#x27;calstack&#x27;, &#x27;calendar&#x27;, &#x27;team&#x27;]),<br/>            (&#x27;/login&#x27;, [&#x27;login&#x27;, &#x27;sign&#x27;, &#x27;auth&#x27;]),<br/>            (&#x27;/team/create&#x27;, [&#x27;create&#x27;, &#x27;team&#x27;, &#x27;form&#x27;]),<br/>            (&#x27;/team/join&#x27;, [&#x27;join&#x27;, &#x27;team&#x27;])<br/>        ]<br/>    <br/>        for path, expected_keywords in pages_to_test:<br/>            response = api_client.get(urljoin(base_url, path))<br/>    <br/>            # Should either load successfully or redirect<br/>&gt;           assert response.status_code in [200, 302]<br/><span class="error">E           assert 500 in [200, 302]</span><br/><span class="error">E            +  where 500 = &lt;Response [500]&gt;.status_code</span><br/><br/>tests/test_e2e_simple.py:33: AssertionError<br/></div></td></tr></tbody>
+      <tbody class="failed results-table-row">
+        <tr>
+          <td class="col-result">Failed</td>
+          <td class="col-name">tests/test_e2e_simple.py::TestFormStructure::test_team_creation_form_structure</td>
+          <td class="col-duration">0.00</td>
+          <td class="col-links"></td></tr>
+        <tr>
+          <td class="extra" colspan="4">
+            <div class="log">self = &lt;test_e2e_simple.TestFormStructure object at 0x7f536062a600&gt;<br/>base_url = &#x27;http://localhost:5000&#x27;<br/>api_client = &lt;requests.sessions.Session object at 0x7f53607d2a50&gt;<br/><br/>    def test_team_creation_form_structure(self, base_url, api_client):<br/>        &quot;&quot;&quot;Test that team creation form has required elements&quot;&quot;&quot;<br/>        response = api_client.get(urljoin(base_url, &#x27;/team/create&#x27;))<br/>    <br/>        if response.status_code == 200:<br/>            content = response.text.lower()<br/>    <br/>            # Should have form elements<br/>            form_elements = [&#x27;&lt;form&#x27;, &#x27;input&#x27;, &#x27;name&#x27;, &#x27;submit&#x27;, &#x27;button&#x27;]<br/>            form_present = any(element in content for element in form_elements)<br/>    <br/>            # Either should have form or be an API endpoint<br/>&gt;           assert form_present or &#x27;json&#x27; in response.headers.get(&#x27;content-type&#x27;, &#x27;&#x27;)<br/><span class="error">E           AssertionError: assert (False or &#x27;json&#x27; in &#x27;text/html; charset=utf-8&#x27;)</span><br/><span class="error">E            +  where &#x27;text/html; charset=utf-8&#x27; = &lt;bound method Mapping.get of {&#x27;Server&#x27;: &#x27;Werkzeug/3.1.3 Python/3.12.11&#x27;, &#x27;Date&#x27;: &#x27;Thu, 24 Jul 2025 23:17:41 GMT&#x27;, &#x27;Content-Type&#x27;: &#x27;text/html; charset=utf-8&#x27;, &#x27;Content-Length&#x27;: &#x27;1765&#x27;, &#x27;Connection&#x27;: &#x27;close&#x27;}&gt;(&#x27;content-type&#x27;, &#x27;&#x27;)</span><br/><span class="error">E            +    where &lt;bound method Mapping.get of {&#x27;Server&#x27;: &#x27;Werkzeug/3.1.3 Python/3.12.11&#x27;, &#x27;Date&#x27;: &#x27;Thu, 24 Jul 2025 23:17:41 GMT&#x27;, &#x27;Content-Type&#x27;: &#x27;text/html; charset=utf-8&#x27;, &#x27;Content-Length&#x27;: &#x27;1765&#x27;, &#x27;Connection&#x27;: &#x27;close&#x27;}&gt; = {&#x27;Server&#x27;: &#x27;Werkzeug/3.1.3 Python/3.12.11&#x27;, &#x27;Date&#x27;: &#x27;Thu, 24 Jul 2025 23:17:41 GMT&#x27;, &#x27;Content-Type&#x27;: &#x27;text/html; charset=utf-8&#x27;, &#x27;Content-Length&#x27;: &#x27;1765&#x27;, &#x27;Connection&#x27;: &#x27;close&#x27;}.get</span><br/><span class="error">E            +      where {&#x27;Server&#x27;: &#x27;Werkzeug/3.1.3 Python/3.12.11&#x27;, &#x27;Date&#x27;: &#x27;Thu, 24 Jul 2025 23:17:41 GMT&#x27;, &#x27;Content-Type&#x27;: &#x27;text/html; charset=utf-8&#x27;, &#x27;Content-Length&#x27;: &#x27;1765&#x27;, &#x27;Connection&#x27;: &#x27;close&#x27;} = &lt;Response [200]&gt;.headers</span><br/><br/>tests/test_e2e_simple.py:57: AssertionError<br/></div></td></tr></tbody>
+      <tbody class="failed results-table-row">
+        <tr>
+          <td class="col-result">Failed</td>
+          <td class="col-name">tests/test_integration.py::TestPollWorkflow::test_poll_creation_endpoint</td>
+          <td class="col-duration">0.00</td>
+          <td class="col-links"></td></tr>
+        <tr>
+          <td class="extra" colspan="4">
+            <div class="log">self = &lt;test_integration.TestPollWorkflow object at 0x7f53607aa510&gt;<br/>base_url = &#x27;http://localhost:5000&#x27;<br/>api_client = &lt;requests.sessions.Session object at 0x7f53607d2a50&gt;<br/><br/>    def test_poll_creation_endpoint(self, base_url, api_client):<br/>        &quot;&quot;&quot;Test poll creation endpoint&quot;&quot;&quot;<br/>        poll_data = {<br/>            &#x27;title&#x27;: &#x27;Test Poll&#x27;,<br/>            &#x27;options&#x27;: [&#x27;Option 1&#x27;, &#x27;Option 2&#x27;]<br/>        }<br/>        response = api_client.post(<br/>            urljoin(base_url, &#x27;/team/dummy_id/create_poll&#x27;),<br/>            json=poll_data<br/>        )<br/>        # Should require authentication (405 Method Not Allowed is also acceptable)<br/>&gt;       assert response.status_code in [302, 401, 403, 404, 405]<br/><span class="error">E       assert 500 in [302, 401, 403, 404, 405]</span><br/><span class="error">E        +  where 500 = &lt;Response [500]&gt;.status_code</span><br/><br/>tests/test_integration.py:50: AssertionError<br/></div></td></tr></tbody>
+      <tbody class="failed results-table-row">
+        <tr>
+          <td class="col-result">Failed</td>
+          <td class="col-name">tests/test_post_deployment.py::TestDeploymentHealth::test_application_is_accessible</td>
+          <td class="col-duration">0.23</td>
+          <td class="col-links"></td></tr>
+        <tr>
+          <td class="extra" colspan="4">
+            <div class="log">self = &lt;test_post_deployment.TestDeploymentHealth object at 0x7f536064cda0&gt;<br/><br/>    def test_application_is_accessible(self):<br/>        &quot;&quot;&quot;Test that the deployed application is accessible&quot;&quot;&quot;<br/>        response = requests.get(DEPLOYMENT_URL, timeout=30)<br/>&gt;       assert response.status_code == 200<br/><span class="error">E       assert 403 == 200</span><br/><span class="error">E        +  where 403 = &lt;Response [403]&gt;.status_code</span><br/><br/>tests/test_post_deployment.py:92: AssertionError<br/></div></td></tr></tbody>
+      <tbody class="failed results-table-row">
+        <tr>
+          <td class="col-result">Failed</td>
+          <td class="col-name">tests/test_post_deployment.py::TestDeploymentHealth::test_database_connectivity</td>
+          <td class="col-duration">0.21</td>
+          <td class="col-links"></td></tr>
+        <tr>
+          <td class="extra" colspan="4">
+            <div class="log">self = &lt;test_post_deployment.TestDeploymentHealth object at 0x7f536064cb30&gt;<br/><br/>    def test_database_connectivity(self):<br/>        &quot;&quot;&quot;Test database connectivity through the app&quot;&quot;&quot;<br/>        # Try to access a page that requires database<br/>        response = requests.get(f&quot;{DEPLOYMENT_URL}/team/create&quot;)<br/>        # Should either load or redirect (not crash with 500)<br/>&gt;       assert response.status_code in [200, 302]<br/><span class="error">E       assert 403 in [200, 302]</span><br/><span class="error">E        +  where 403 = &lt;Response [403]&gt;.status_code</span><br/><br/>tests/test_post_deployment.py:100: AssertionError<br/></div></td></tr></tbody>
+      <tbody class="failed results-table-row">
+        <tr>
+          <td class="col-result">Failed</td>
+          <td class="col-name">tests/test_post_deployment.py::TestDeploymentHealth::test_ssl_certificate</td>
+          <td class="col-duration">0.21</td>
+          <td class="col-links"></td></tr>
+        <tr>
+          <td class="extra" colspan="4">
+            <div class="log">self = &lt;test_post_deployment.TestDeploymentHealth object at 0x7f536064ccb0&gt;<br/><br/>    def test_ssl_certificate(self):<br/>        &quot;&quot;&quot;Test SSL certificate if using HTTPS&quot;&quot;&quot;<br/>        if DEPLOYMENT_URL.startswith(&#x27;https&#x27;):<br/>            response = requests.get(DEPLOYMENT_URL, verify=True)<br/>&gt;           assert response.status_code == 200<br/><span class="error">E           assert 403 == 200</span><br/><span class="error">E            +  where 403 = &lt;Response [403]&gt;.status_code</span><br/><br/>tests/test_post_deployment.py:106: AssertionError<br/></div></td></tr></tbody>
+      <tbody class="failed results-table-row">
+        <tr>
+          <td class="col-result">Failed</td>
+          <td class="col-name">tests/test_post_deployment.py::TestDeploymentHealth::test_performance_under_load</td>
+          <td class="col-duration">0.39</td>
+          <td class="col-links"></td></tr>
+        <tr>
+          <td class="extra" colspan="4">
+            <div class="log">self = &lt;test_post_deployment.TestDeploymentHealth object at 0x7f536064caa0&gt;<br/><br/>    def test_performance_under_load(self):<br/>        &quot;&quot;&quot;Basic load test - multiple concurrent requests&quot;&quot;&quot;<br/>        import concurrent.futures<br/>        import threading<br/>    <br/>        def make_request():<br/>            try:<br/>                response = requests.get(DEPLOYMENT_URL, timeout=10)<br/>                return response.status_code == 200<br/>            except:<br/>                return False<br/>    <br/>        # Make 10 concurrent requests<br/>        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:<br/>            futures = [executor.submit(make_request) for _ in range(10)]<br/>            results = [future.result() for future in concurrent.futures.as_completed(futures)]<br/>    <br/>        # At least 80% should succeed<br/>        success_rate = sum(results) / len(results)<br/>&gt;       assert success_rate &gt;= 0.8, f&quot;Only {success_rate:.1%} of requests succeeded&quot;<br/><span class="error">E       AssertionError: Only 0.0% of requests succeeded</span><br/><span class="error">E       assert 0.0 &gt;= 0.8</span><br/><br/>tests/test_post_deployment.py:127: AssertionError<br/></div></td></tr></tbody>
+      <tbody class="failed results-table-row">
+        <tr>
+          <td class="col-result">Failed</td>
+          <td class="col-name">tests/test_post_deployment.py::TestEmailIntegration::test_email_service_configuration</td>
+          <td class="col-duration">0.12</td>
+          <td class="col-links"></td></tr>
+        <tr>
+          <td class="extra" colspan="4">
+            <div class="log">self = &lt;test_post_deployment.TestEmailIntegration object at 0x7f536064ce60&gt;<br/><br/>    def test_email_service_configuration(self):<br/>        &quot;&quot;&quot;Test that email service is properly configured&quot;&quot;&quot;<br/>        # This is a basic test - you might want to add actual email sending test<br/>        # with a test email address if you have SendGrid properly configured<br/>    <br/>        # For now, just verify the invite endpoint doesn&#x27;t crash<br/>        api_client = requests.Session()<br/>        response = api_client.post(<br/>            f&quot;{DEPLOYMENT_URL}/api/team/test_team_id/invite&quot;,<br/>            json={&quot;emails&quot;: [&quot;test@example.com&quot;]}<br/>        )<br/>    <br/>        # Should require authentication, not crash<br/>&gt;       assert response.status_code in [302, 401, 403, 500]  # 500 is OK for invalid team<br/><span class="error">E       assert 404 in [302, 401, 403, 500]</span><br/><span class="error">E        +  where 404 = &lt;Response [404]&gt;.status_code</span><br/><br/>tests/test_post_deployment.py:146: AssertionError<br/></div></td></tr></tbody>
+      <tbody class="skipped results-table-row">
+        <tr>
+          <td class="col-result">Skipped</td>
+          <td class="col-name">tests/test_post_deployment.py::TestOAuthIntegration::test_google_oauth_flow_initiation</td>
+          <td class="col-duration">0.00</td>
+          <td class="col-links"></td></tr>
+        <tr>
+          <td class="extra" colspan="4">
+            <div class="log">(&#x27;/home/runner/work/calstack/calstack/tests/test_post_deployment.py&#x27;, 40, &#x27;Skipped: OAuth tests disabled - set ENABLE_OAUTH_TESTS=true&#x27;)<br/></div></td></tr></tbody>
+      <tbody class="skipped results-table-row">
+        <tr>
+          <td class="col-result">Skipped</td>
+          <td class="col-name">tests/test_post_deployment.py::TestOAuthIntegration::test_outlook_oauth_flow_initiation</td>
+          <td class="col-duration">0.00</td>
+          <td class="col-links"></td></tr>
+        <tr>
+          <td class="extra" colspan="4">
+            <div class="log">(&#x27;/home/runner/work/calstack/calstack/tests/test_post_deployment.py&#x27;, 61, &#x27;Skipped: OAuth tests disabled - set ENABLE_OAUTH_TESTS=true&#x27;)<br/></div></td></tr></tbody>
+      <tbody class="skipped results-table-row">
+        <tr>
+          <td class="col-result">Skipped</td>
+          <td class="col-name">tests/test_post_deployment.py::TestOAuthIntegration::test_oauth_callback_endpoints_exist</td>
+          <td class="col-duration">0.00</td>
+          <td class="col-links"></td></tr>
+        <tr>
+          <td class="extra" colspan="4">
+            <div class="log">(&#x27;/home/runner/work/calstack/calstack/tests/test_post_deployment.py&#x27;, 73, &#x27;Skipped: OAuth tests disabled - set ENABLE_OAUTH_TESTS=true&#x27;)<br/></div></td></tr></tbody>
+      <tbody class="passed results-table-row">
+        <tr>
+          <td class="col-result">Passed</td>
+          <td class="col-name">tests/test_api_endpoints.py::TestBasicEndpoints::test_home_page_accessible</td>
+          <td class="col-duration">0.00</td>
+          <td class="col-links"></td></tr>
+        <tr>
+          <td class="extra" colspan="4">
+            <div class="empty log">No log output captured.</div></td></tr></tbody>
+      <tbody class="passed results-table-row">
+        <tr>
+          <td class="col-result">Passed</td>
+          <td class="col-name">tests/test_api_endpoints.py::TestBasicEndpoints::test_index_redirect</td>
+          <td class="col-duration">0.00</td>
+          <td class="col-links"></td></tr>
+        <tr>
+          <td class="extra" colspan="4">
+            <div class="empty log">No log output captured.</div></td></tr></tbody>
+      <tbody class="passed results-table-row">
+        <tr>
+          <td class="col-result">Passed</td>
+          <td class="col-name">tests/test_api_endpoints.py::TestTeamEndpoints::test_create_team_page_accessible</td>
+          <td class="col-duration">0.00</td>
+          <td class="col-links"></td></tr>
+        <tr>
+          <td class="extra" colspan="4">
+            <div class="empty log">No log output captured.</div></td></tr></tbody>
+      <tbody class="passed results-table-row">
+        <tr>
+          <td class="col-result">Passed</td>
+          <td class="col-name">tests/test_api_endpoints.py::TestTeamEndpoints::test_join_team_page_structure</td>
+          <td class="col-duration">0.00</td>
+          <td class="col-links"></td></tr>
+        <tr>
+          <td class="extra" colspan="4">
+            <div class="empty log">No log output captured.</div></td></tr></tbody>
+      <tbody class="passed results-table-row">
+        <tr>
+          <td class="col-result">Passed</td>
+          <td class="col-name">tests/test_api_endpoints.py::TestAuthEndpoints::test_outlook_login_accessible</td>
+          <td class="col-duration">0.09</td>
+          <td class="col-links"></td></tr>
+        <tr>
+          <td class="extra" colspan="4">
+            <div class="empty log">No log output captured.</div></td></tr></tbody>
+      <tbody class="passed results-table-row">
+        <tr>
+          <td class="col-result">Passed</td>
+          <td class="col-name">tests/test_api_endpoints.py::TestAPIResponseHeaders::test_response_headers</td>
+          <td class="col-duration">0.00</td>
+          <td class="col-links"></td></tr>
+        <tr>
+          <td class="extra" colspan="4">
+            <div class="empty log">No log output captured.</div></td></tr></tbody>
+      <tbody class="passed results-table-row">
+        <tr>
+          <td class="col-result">Passed</td>
+          <td class="col-name">tests/test_api_endpoints.py::TestAPIResponseHeaders::test_no_sensitive_info_in_headers</td>
+          <td class="col-duration">0.00</td>
+          <td class="col-links"></td></tr>
+        <tr>
+          <td class="extra" colspan="4">
+            <div class="empty log">No log output captured.</div></td></tr></tbody>
+      <tbody class="passed results-table-row">
+        <tr>
+          <td class="col-result">Passed</td>
+          <td class="col-name">tests/test_api_endpoints.py::TestErrorHandling::test_404_handling</td>
+          <td class="col-duration">0.00</td>
+          <td class="col-links"></td></tr>
+        <tr>
+          <td class="extra" colspan="4">
+            <div class="empty log">No log output captured.</div></td></tr></tbody>
+      <tbody class="passed results-table-row">
+        <tr>
+          <td class="col-result">Passed</td>
+          <td class="col-name">tests/test_api_endpoints.py::TestErrorHandling::test_invalid_team_id</td>
+          <td class="col-duration">0.00</td>
+          <td class="col-links"></td></tr>
+        <tr>
+          <td class="extra" colspan="4">
+            <div class="empty log">No log output captured.</div></td></tr></tbody>
+      <tbody class="passed results-table-row">
+        <tr>
+          <td class="col-result">Passed</td>
+          <td class="col-name">tests/test_e2e_simple.py::TestUserInterfaceSimple::test_home_page_content</td>
+          <td class="col-duration">0.00</td>
+          <td class="col-links"></td></tr>
+        <tr>
+          <td class="extra" colspan="4">
+            <div class="empty log">No log output captured.</div></td></tr></tbody>
+      <tbody class="passed results-table-row">
+        <tr>
+          <td class="col-result">Passed</td>
+          <td class="col-name">tests/test_e2e_simple.py::TestFormStructure::test_join_team_form_structure</td>
+          <td class="col-duration">0.00</td>
+          <td class="col-links"></td></tr>
+        <tr>
+          <td class="extra" colspan="4">
+            <div class="empty log">No log output captured.</div></td></tr></tbody>
+      <tbody class="passed results-table-row">
+        <tr>
+          <td class="col-result">Passed</td>
+          <td class="col-name">tests/test_e2e_simple.py::TestAPIEndpointsIntegration::test_api_endpoints_respond</td>
+          <td class="col-duration">0.00</td>
+          <td class="col-links"></td></tr>
+        <tr>
+          <td class="extra" colspan="4">
+            <div class="empty log">No log output captured.</div></td></tr></tbody>
+      <tbody class="passed results-table-row">
+        <tr>
+          <td class="col-result">Passed</td>
+          <td class="col-name">tests/test_e2e_simple.py::TestErrorHandlingIntegration::test_404_pages_handled_gracefully</td>
+          <td class="col-duration">0.01</td>
+          <td class="col-links"></td></tr>
+        <tr>
+          <td class="extra" colspan="4">
+            <div class="empty log">No log output captured.</div></td></tr></tbody>
+      <tbody class="passed results-table-row">
+        <tr>
+          <td class="col-result">Passed</td>
+          <td class="col-name">tests/test_e2e_simple.py::TestSecurityBasics::test_no_sensitive_data_exposure</td>
+          <td class="col-duration">0.00</td>
+          <td class="col-links"></td></tr>
+        <tr>
+          <td class="extra" colspan="4">
+            <div class="empty log">No log output captured.</div></td></tr></tbody>
+      <tbody class="passed results-table-row">
+        <tr>
+          <td class="col-result">Passed</td>
+          <td class="col-name">tests/test_e2e_simple.py::TestSecurityBasics::test_basic_headers_security</td>
+          <td class="col-duration">0.00</td>
+          <td class="col-links"></td></tr>
+        <tr>
+          <td class="extra" colspan="4">
+            <div class="log"> ------------------------------Captured stdout call------------------------------ <br/>Warning: Detailed server info exposed: werkzeug/3.1.3 python/3.12.11
+<br/></div></td></tr></tbody>
+      <tbody class="passed results-table-row">
+        <tr>
+          <td class="col-result">Passed</td>
+          <td class="col-name">tests/test_e2e_simple.py::TestPerformanceBasics::test_response_times</td>
+          <td class="col-duration">0.00</td>
+          <td class="col-links"></td></tr>
+        <tr>
+          <td class="extra" colspan="4">
+            <div class="empty log">No log output captured.</div></td></tr></tbody>
+      <tbody class="passed results-table-row">
+        <tr>
+          <td class="col-result">Passed</td>
+          <td class="col-name">tests/test_e2e_simple.py::TestPerformanceBasics::test_multiple_requests_handling</td>
+          <td class="col-duration">0.01</td>
+          <td class="col-links"></td></tr>
+        <tr>
+          <td class="extra" colspan="4">
+            <div class="empty log">No log output captured.</div></td></tr></tbody>
+      <tbody class="passed results-table-row">
+        <tr>
+          <td class="col-result">Passed</td>
+          <td class="col-name">tests/test_integration.py::TestTeamWorkflow::test_team_creation_workflow</td>
+          <td class="col-duration">0.00</td>
+          <td class="col-links"></td></tr>
+        <tr>
+          <td class="extra" colspan="4">
+            <div class="empty log">No log output captured.</div></td></tr></tbody>
+      <tbody class="passed results-table-row">
+        <tr>
+          <td class="col-result">Passed</td>
+          <td class="col-name">tests/test_integration.py::TestCalendarIntegration::test_suggest_slots_endpoint_structure</td>
+          <td class="col-duration">0.00</td>
+          <td class="col-links"></td></tr>
+        <tr>
+          <td class="extra" colspan="4">
+            <div class="empty log">No log output captured.</div></td></tr></tbody>
+      <tbody class="passed results-table-row">
+        <tr>
+          <td class="col-result">Passed</td>
+          <td class="col-name">tests/test_integration.py::TestEmailIntegration::test_invite_members_endpoint</td>
+          <td class="col-duration">0.00</td>
+          <td class="col-links"></td></tr>
+        <tr>
+          <td class="extra" colspan="4">
+            <div class="empty log">No log output captured.</div></td></tr></tbody>
+      <tbody class="passed results-table-row">
+        <tr>
+          <td class="col-result">Passed</td>
+          <td class="col-name">tests/test_integration.py::TestDatabaseConnectivity::test_app_database_connection</td>
+          <td class="col-duration">0.00</td>
+          <td class="col-links"></td></tr>
+        <tr>
+          <td class="extra" colspan="4">
+            <div class="empty log">No log output captured.</div></td></tr></tbody>
+      <tbody class="passed results-table-row">
+        <tr>
+          <td class="col-result">Passed</td>
+          <td class="col-name">tests/test_integration.py::TestSecurityHeaders::test_security_headers_present</td>
+          <td class="col-duration">0.00</td>
+          <td class="col-links"></td></tr>
+        <tr>
+          <td class="extra" colspan="4">
+            <div class="empty log">No log output captured.</div></td></tr></tbody>
+      <tbody class="passed results-table-row">
+        <tr>
+          <td class="col-result">Passed</td>
+          <td class="col-name">tests/test_post_deployment.py::TestSecurityInProduction::test_https_redirect</td>
+          <td class="col-duration">0.12</td>
+          <td class="col-links"></td></tr>
+        <tr>
+          <td class="extra" colspan="4">
+            <div class="empty log">No log output captured.</div></td></tr></tbody>
+      <tbody class="passed results-table-row">
+        <tr>
+          <td class="col-result">Passed</td>
+          <td class="col-name">tests/test_post_deployment.py::TestSecurityInProduction::test_security_headers</td>
+          <td class="col-duration">0.16</td>
+          <td class="col-links"></td></tr>
+        <tr>
+          <td class="extra" colspan="4">
+            <div class="empty log">No log output captured.</div></td></tr></tbody>
+      <tbody class="passed results-table-row">
+        <tr>
+          <td class="col-result">Passed</td>
+          <td class="col-name">tests/test_post_deployment.py::TestSecurityInProduction::test_no_debug_info_exposed</td>
+          <td class="col-duration">0.21</td>
+          <td class="col-links"></td></tr>
+        <tr>
+          <td class="extra" colspan="4">
+            <div class="empty log">No log output captured.</div></td></tr></tbody></table></body></html>
