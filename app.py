@@ -146,6 +146,9 @@ from bson import ObjectId
 
 @app.route('/api/team/<team_id>/polls', methods=['GET'])
 def get_team_polls(team_id):
+    user_email = session.get('email')
+    if not user_email:
+        return jsonify({'error': 'Authentication required'}), 401
     # Return all open polls for a team
     polls = list(polls_col.find({'team_id': team_id, 'status': 'open'}))
     for poll in polls:
@@ -330,8 +333,22 @@ def create_team():
     if not user_email:
         return redirect(url_for('index'))
     if request.method == 'POST':
-        team_name = request.form['team_name']
-        invited_emails = [e.strip() for e in request.form['invited_emails'].split(',') if e.strip()]
+        # Input validation
+        team_name = request.form.get('team_name', '').strip()
+        if not team_name:
+            return render_template('create_team.html', error='Team name is required')
+        if len(team_name) > 100:
+            return render_template('create_team.html', error='Team name too long (max 100 characters)')
+        
+        invited_emails_raw = request.form.get('invited_emails', '')
+        invited_emails = [e.strip() for e in invited_emails_raw.split(',') if e.strip()]
+        
+        # Validate email formats
+        import re
+        email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+        for email in invited_emails:
+            if not re.match(email_pattern, email):
+                return render_template('create_team.html', error=f'Invalid email format: {email}')
         import secrets
         code = secrets.token_hex(4)
         members = [user_email]  # Only creator is a member at first
@@ -470,6 +487,20 @@ def team_page(team_id):
 
 @app.route('/team/<team_id>/availability/<email>')
 def get_member_availability(team_id, email):
+    # Security: Require authentication and team membership
+    user_email = session.get('email')
+    if not user_email:
+        return redirect(url_for('index'))
+    
+    # Verify user is member of the team
+    team = teams_col.find_one({"_id": ObjectId(team_id)})
+    if not team or user_email not in team.get('members', []):
+        return jsonify({"error": "Access denied"}), 403
+    
+    # Verify requested email is also a team member
+    if email not in team.get('members', []):
+        return jsonify({"error": "User not found in team"}), 404
+    
     avail_doc = availability_col.find_one({"team_id": team_id, "user_email": email})
     busy = avail_doc['busy'] if avail_doc else []
     return {"busy": busy}
@@ -648,6 +679,9 @@ def legacy_vote_poll(poll_id):
 
 @app.route('/team/<team_id>/polls')
 def get_team_polls_page(team_id):
+    user_email = session.get('email')
+    if not user_email:
+        return redirect(url_for('index'))
     polls = list(polls_col.find({'team_id': team_id, 'status': 'open'}))
     for poll in polls:
         poll['_id'] = str(poll['_id'])
@@ -655,6 +689,9 @@ def get_team_polls_page(team_id):
 
 @app.route('/team/<team_id>/meetings')
 def get_team_meetings(team_id):
+    user_email = session.get('email')
+    if not user_email:
+        return redirect(url_for('index'))
     meetings_col = db.meetings
     meetings = list(meetings_col.find({'team_id': team_id}))
     for meeting in meetings:
@@ -681,7 +718,7 @@ def login_outlook():
     # Start Microsoft OAuth2 flow
     ms_client_id = os.environ.get('MS_CLIENT_ID')
     # Use dedicated redirect URI for Microsoft
-    ms_redirect_uri = os.environ.get('MS_OUTLOOK_REDIRECT_URI', 'https://chronoconqueror.com/oauth2callback/outlook')
+    ms_redirect_uri = os.environ.get('MS_OUTLOOK_REDIRECT_URI', 'https://calstack.com/oauth2callback/outlook')
     ms_auth_url = (
         f"{MS_AUTHORITY}/oauth2/v2.0/authorize?"
         f"client_id={ms_client_id}&response_type=code&redirect_uri={ms_redirect_uri}"
@@ -711,7 +748,7 @@ def oauth2callback_outlook():
     ms_client_id = os.environ.get('MS_CLIENT_ID')
     ms_client_secret = os.environ.get('MS_CLIENT_SECRET')
     # Use dedicated redirect URI for Microsoft token exchange
-    ms_redirect_uri = os.environ.get('MS_OUTLOOK_REDIRECT_URI', 'https://chronoconqueror.com/oauth2callback/outlook')
+    ms_redirect_uri = os.environ.get('MS_OUTLOOK_REDIRECT_URI', 'https://calstack.com/oauth2callback/outlook')
     token_url = f"{MS_AUTHORITY}/oauth2/v2.0/token"
     data = {
         'client_id': ms_client_id,
