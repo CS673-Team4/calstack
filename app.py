@@ -72,12 +72,12 @@ def propose_slots():
     timezone = user_doc.get('timezone', 'UTC') if user_doc else 'UTC'
     tz = pytz.timezone(timezone)
     now = datetime.now(tz)
-    
+
     # New options
     algorithm = data.get('algorithm', 'next')
     num_slots = int(data.get('num_slots', 5))
     avoid_work_hours = bool(data.get('avoid_work_hours', False))
-    
+
     all_slots = []
     for day_offset in range(7):
         day = now + timedelta(days=day_offset)
@@ -177,15 +177,15 @@ def create_manual_user(email, password, timezone='UTC'):
     # Check if user already exists
     if users_col.find_one({'email': email}):
         return False, "User already exists"
-    
+
     # Validate inputs
     if not validate_email(email):
         return False, "Invalid email format"
-    
+
     is_valid, message = validate_password(password)
     if not is_valid:
         return False, message
-    
+
     # Create user
     user_doc = {
         'email': email,
@@ -196,7 +196,7 @@ def create_manual_user(email, password, timezone='UTC'):
         'created_at': datetime.utcnow(),
         'ics_calendar_data': []  # For future ICS upload
     }
-    
+
     try:
         result = users_col.insert_one(user_doc)
         return True, str(result.inserted_id)
@@ -208,7 +208,7 @@ def authenticate_manual_user(email, password):
     user = users_col.find_one({'email': email, 'auth_method': 'manual'})
     if not user:
         return False, "User not found or not a manual user"
-    
+
     if verify_password(password, user['password_hash']):
         return True, user
     else:
@@ -223,53 +223,53 @@ def parse_ics_file(ics_content, user_timezone='UTC'):
         import recurring_ical_events
         from dateutil import tz
         import pytz
-        
+
         # Parse the ICS content
         cal = Calendar.from_ical(ics_content)
-        
+
         # Get timezone info
         user_tz = pytz.timezone(user_timezone)
-        
+
         # Extract events for next 30 days (longer than OAuth sync)
         now = datetime.utcnow()
         end_date = now + timedelta(days=30)
-        
+
         # Get all events including recurring ones
         events = recurring_ical_events.of(cal).between(now, end_date)
-        
+
         busy_times = []
         for event in events:
             # Get start and end times
             start = event.get('DTSTART')
             end = event.get('DTEND')
-            
+
             if start and end:
                 # Handle different datetime formats
                 start_dt = start.dt if hasattr(start, 'dt') else start
                 end_dt = end.dt if hasattr(end, 'dt') else end
-                
+
                 # Convert to datetime if it's a date
                 if hasattr(start_dt, 'date') and not hasattr(start_dt, 'hour'):
                     # All-day event, skip for availability purposes
                     continue
-                
+
                 # Ensure timezone awareness
                 if start_dt.tzinfo is None:
                     start_dt = user_tz.localize(start_dt)
                 if end_dt.tzinfo is None:
                     end_dt = user_tz.localize(end_dt)
-                
+
                 # Convert to UTC for storage
                 start_utc = start_dt.astimezone(pytz.UTC)
                 end_utc = end_dt.astimezone(pytz.UTC)
-                
+
                 busy_times.append({
                     'start': start_utc.isoformat().replace('+00:00', 'Z'),
                     'end': end_utc.isoformat().replace('+00:00', 'Z')
                 })
-        
+
         return True, busy_times
-        
+
     except Exception as e:
         return False, f"Error parsing ICS file: {str(e)}"
 
@@ -278,10 +278,10 @@ def sync_manual_user_availability(email):
     user = users_col.find_one({'email': email, 'auth_method': 'manual'})
     if not user or not user.get('ics_calendar_data'):
         return
-    
+
     # Use stored ICS data as busy times
     busy_times = user.get('ics_calendar_data', [])
-    
+
     # Update availability for all user's teams
     user_teams = teams_col.find({"members": email})
     for team in user_teams:
@@ -290,7 +290,7 @@ def sync_manual_user_availability(email):
             {"$set": {"busy": busy_times}},
             upsert=True
         )
-    
+
     print(f"Synced manual availability for {email}: {len(busy_times)} busy periods")
 
 @app.route('/api/team/<team_id>/polls', methods=['GET'])
@@ -466,7 +466,7 @@ SCOPES = [
 
 @app.route('/')
 def index():
-    return render_template("login.html")
+    return render_template("landing.html")
 
 @app.route('/home')
 def home():
@@ -488,10 +488,10 @@ def create_team():
             return render_template('create_team.html', error='Team name is required')
         if len(team_name) > 100:
             return render_template('create_team.html', error='Team name too long (max 100 characters)')
-        
+
         invited_emails_raw = request.form.get('invited_emails', '')
         invited_emails = [e.strip() for e in invited_emails_raw.split(',') if e.strip()]
-        
+
         # Validate email formats
         import re
         email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
@@ -538,7 +538,7 @@ def create_team():
         # Sync availability for the creator
         user = users_col.find_one({'email': user_email})
         auth_method = user.get('auth_method') if user else None
-        
+
         if auth_method == 'manual':
             # Sync manual user availability using ICS data
             if user and user.get('ics_calendar_data'):
@@ -601,7 +601,7 @@ def join_team():
             # Sync this user's availability for this team only
             user = users_col.find_one({'email': user_email})
             auth_method = user.get('auth_method') if user else None
-            
+
             if auth_method == 'manual':
                 # Sync manual user availability using ICS data
                 if user and user.get('ics_calendar_data'):
@@ -671,16 +671,16 @@ def get_member_availability(team_id, email):
     user_email = session.get('email')
     if not user_email:
         return redirect(url_for('index'))
-    
+
     # Verify user is member of the team
     team = teams_col.find_one({"_id": ObjectId(team_id)})
     if not team or user_email not in team.get('members', []):
         return jsonify({"error": "Access denied"}), 403
-    
+
     # Verify requested email is also a team member
     if email not in team.get('members', []):
         return jsonify({"error": "User not found in team"}), 404
-    
+
     avail_doc = availability_col.find_one({"team_id": team_id, "user_email": email})
     busy = avail_doc['busy'] if avail_doc else []
     return {"busy": busy}
@@ -1171,14 +1171,14 @@ def register():
         password = request.form.get('password', '')
         confirm_password = request.form.get('confirm_password', '')
         timezone = request.form.get('timezone', 'UTC')
-        
+
         # Validation
         if not email or not password:
             return render_template('register.html', error='Email and password are required')
-        
+
         if password != confirm_password:
             return render_template('register.html', error='Passwords do not match')
-        
+
         # Create user
         success, message = create_manual_user(email, password, timezone)
         if success:
@@ -1188,7 +1188,7 @@ def register():
             return redirect(url_for('home'))
         else:
             return render_template('register.html', error=message)
-    
+
     return render_template('register.html')
 
 @app.route('/login/manual', methods=['GET', 'POST'])
@@ -1197,10 +1197,10 @@ def login_manual():
     if request.method == 'POST':
         email = request.form.get('email', '').strip().lower()
         password = request.form.get('password', '')
-        
+
         if not email or not password:
             return render_template('login_manual.html', error='Email and password are required')
-        
+
         # Authenticate user
         success, result = authenticate_manual_user(email, password)
         if success:
@@ -1210,7 +1210,7 @@ def login_manual():
             return redirect(url_for('home'))
         else:
             return render_template('login_manual.html', error=result)
-    
+
     return render_template('login_manual.html')
 
 @app.route('/upload-calendar', methods=['GET', 'POST'])
@@ -1219,30 +1219,30 @@ def upload_calendar():
     user_email = session.get('email')
     if not user_email:
         return redirect(url_for('index'))
-    
+
     # Check if user is manual auth (OAuth users don't need this)
     user = users_col.find_one({'email': user_email})
     if not user or user.get('auth_method') != 'manual':
         return redirect(url_for('home'))
-    
+
     if request.method == 'POST':
         # Check if file was uploaded
         if 'ics_file' not in request.files:
             return render_template('upload_calendar.html', error='No file selected')
-        
+
         file = request.files['ics_file']
         if file.filename == '':
             return render_template('upload_calendar.html', error='No file selected')
-        
+
         # Validate file extension
         if not file.filename.lower().endswith('.ics'):
             return render_template('upload_calendar.html', error='Please upload a .ics calendar file')
-        
+
         # Read and parse file content
         try:
             ics_content = file.read()
             user_timezone = user.get('timezone', 'UTC')
-            
+
             # Parse ICS file
             success, result = parse_ics_file(ics_content, user_timezone)
             if success:
@@ -1251,18 +1251,18 @@ def upload_calendar():
                     {'email': user_email},
                     {'$set': {'ics_calendar_data': result}}
                 )
-                
+
                 # Sync availability for all teams
                 sync_manual_user_availability(user_email)
-                
-                return render_template('upload_calendar.html', 
+
+                return render_template('upload_calendar.html',
                                      success=f'Calendar uploaded successfully! Found {len(result)} events.')
             else:
                 return render_template('upload_calendar.html', error=result)
-                
+
         except Exception as e:
             return render_template('upload_calendar.html', error=f'Error processing file: {str(e)}')
-    
+
     return render_template('upload_calendar.html')
 
 @app.route('/logout')
@@ -1272,4 +1272,4 @@ def logout():
     return redirect(url_for('index'))
 
 if __name__ == '__main__':
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(host="0.0.0.0", port=5002, debug=True)

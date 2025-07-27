@@ -1,0 +1,557 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>{calstack} - Smart Team Scheduling</title>
+        <link
+            href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
+            rel="stylesheet"
+        />
+        <style>
+            :root {
+                --black: #000000;
+                --white: #ffffff;
+                --gray-50: #fafafa;
+                --gray-100: #f5f5f5;
+                --gray-200: #e5e5e5;
+                --gray-400: #a3a3a3;
+                --gray-600: #525252;
+                --gray-900: #171717;
+            }
+
+            * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+            }
+
+            body {
+                font-family:
+                    "Inter",
+                    -apple-system,
+                    BlinkMacSystemFont,
+                    "Segoe UI",
+                    sans-serif;
+                line-height: 1.6;
+                color: var(--black);
+                background: var(--white);
+                font-feature-settings: "cv01", "cv03", "cv04", "cv11";
+                -webkit-font-smoothing: antialiased;
+                -moz-osx-font-smoothing: grayscale;
+            }
+
+            /* Typography */
+            .brand {
+                font-family: "Inter", sans-serif;
+                font-weight: 600;
+                letter-spacing: -0.02em;
+            }
+
+            /* Header */
+            .header {
+                background: rgba(255, 255, 255, 0.8);
+                backdrop-filter: blur(12px);
+                border-bottom: 1px solid var(--gray-200);
+                padding: 1.5rem 0;
+                position: sticky;
+                top: 0;
+                z-index: 100;
+            }
+
+            .logo {
+                font-size: 1.5rem;
+                color: var(--black);
+                text-decoration: none;
+                font-weight: 600;
+            }
+
+            .btn-primary {
+                background: var(--black);
+                border: 1px solid var(--black);
+                color: var(--white);
+                padding: 0.625rem 1.5rem;
+                border-radius: 8px;
+                font-weight: 500;
+                font-size: 0.875rem;
+                letter-spacing: 0.01em;
+                transition: all 0.2s ease;
+                text-decoration: none;
+                display: inline-block;
+            }
+
+            .btn-primary:hover {
+                background: var(--gray-900);
+                border-color: var(--gray-900);
+                color: var(--white);
+                transform: translateY(-1px);
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            }
+
+            .btn-outline {
+                background: transparent;
+                border: 1px solid var(--gray-200);
+                color: var(--gray-600);
+                padding: 0.625rem 1.5rem;
+                border-radius: 8px;
+                font-weight: 500;
+                font-size: 0.875rem;
+                letter-spacing: 0.01em;
+                text-decoration: none;
+                display: inline-block;
+                transition: all 0.2s ease;
+            }
+
+            .btn-outline:hover {
+                background: var(--gray-50);
+                border-color: var(--gray-400);
+                color: var(--black);
+                text-decoration: none;
+                transform: translateY(-1px);
+                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            }
+
+            .btn-lg {
+                padding: 1rem 2.5rem;
+                font-size: 1.125rem;
+                border-radius: 12px;
+            }
+
+            /* Hero */
+            .hero {
+                padding: 8rem 0 10rem;
+                background: var(--white);
+            }
+
+            .hero h1 {
+                font-size: 4.5rem;
+                font-weight: 600;
+                line-height: 1.1;
+                margin-bottom: 2.5rem;
+                color: var(--black);
+                letter-spacing: -0.03em;
+            }
+
+            .hero .lead {
+                font-size: 1.375rem;
+                color: var(--gray-600);
+                margin-bottom: 3.5rem;
+                max-width: 44rem;
+                font-weight: 400;
+                line-height: 1.6;
+            }
+
+            .hero .buttons {
+                display: flex;
+                gap: 1rem;
+                align-items: center;
+                justify-content: center;
+            }
+
+            /* Sections */
+            .section {
+                padding: 7rem 0;
+            }
+
+            .section-alt {
+                background: var(--gray-50);
+            }
+
+            .section-title {
+                font-size: 2.75rem;
+                font-weight: 600;
+                margin-bottom: 1.75rem;
+                color: var(--black);
+                letter-spacing: -0.025em;
+            }
+
+            .section-subtitle {
+                font-size: 1.25rem;
+                color: var(--gray-600);
+                max-width: 38rem;
+                margin: 0 auto 5rem;
+                font-weight: 400;
+                line-height: 1.6;
+            }
+
+            /* Features */
+            .features-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+                gap: 3rem;
+                margin-top: 4rem;
+            }
+
+            .feature {
+                padding: 0;
+            }
+
+            .feature h3 {
+                font-size: 1.375rem;
+                font-weight: 600;
+                margin-bottom: 1.25rem;
+                color: var(--black);
+                letter-spacing: -0.015em;
+            }
+
+            .feature p {
+                color: var(--gray-600);
+                font-size: 1.0625rem;
+                line-height: 1.65;
+                margin: 0;
+            }
+
+            /* Steps */
+            .steps-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+                gap: 3rem;
+                margin-top: 4rem;
+            }
+
+            .step {
+                text-align: left;
+            }
+
+            .step-number {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                width: 2.5rem;
+                height: 2.5rem;
+                background: var(--black);
+                color: var(--white);
+                border-radius: 50%;
+                font-size: 0.875rem;
+                font-weight: 600;
+                margin-bottom: 1.5rem;
+            }
+
+            .step h4 {
+                font-size: 1.125rem;
+                font-weight: 600;
+                margin-bottom: 0.75rem;
+                color: var(--black);
+                letter-spacing: -0.01em;
+            }
+
+            .step p {
+                color: var(--gray-600);
+                font-size: 1rem;
+                line-height: 1.6;
+                margin: 0;
+            }
+
+            /* CTA */
+            .cta {
+                padding: 6rem 0;
+                background: var(--black);
+                color: var(--white);
+            }
+
+            .cta h2 {
+                font-size: 2.5rem;
+                font-weight: 600;
+                margin-bottom: 1.5rem;
+                letter-spacing: -0.02em;
+            }
+
+            .cta p {
+                font-size: 1.125rem;
+                color: var(--gray-400);
+                margin-bottom: 2.5rem;
+                font-weight: 400;
+            }
+
+            .cta .btn-primary {
+                background: var(--white);
+                color: var(--black);
+                border-color: var(--white);
+            }
+
+            .cta .btn-primary:hover {
+                background: var(--gray-100);
+                border-color: var(--gray-100);
+                color: var(--black);
+            }
+
+            /* Footer */
+            .footer {
+                background: var(--white);
+                color: var(--gray-400);
+                padding: 3rem 0;
+                text-align: center;
+                border-top: 1px solid var(--gray-200);
+            }
+
+            .footer .logo {
+                color: var(--black);
+                margin-bottom: 0.75rem;
+                font-size: 1rem;
+            }
+
+            .footer p {
+                font-size: 0.875rem;
+                margin: 0;
+            }
+
+            /* Responsive */
+            @media (max-width: 768px) {
+                .hero {
+                    padding: 4rem 0 5rem;
+                }
+
+                .hero h1 {
+                    font-size: 2.75rem;
+                }
+
+                .hero .buttons {
+                    flex-direction: column;
+                    align-items: stretch;
+                }
+
+                .section {
+                    padding: 4rem 0;
+                }
+
+                .section-title {
+                    font-size: 2rem;
+                }
+
+                .features-grid {
+                    grid-template-columns: 1fr;
+                    gap: 2.5rem;
+                }
+
+                .steps-grid {
+                    grid-template-columns: 1fr;
+                    gap: 2.5rem;
+                }
+
+                .cta h2 {
+                    font-size: 2rem;
+                }
+            }
+
+            /* Utilities */
+            .text-center {
+                text-align: center;
+            }
+
+            .container {
+                max-width: 1200px;
+                margin: 0 auto;
+                padding: 0 1.5rem;
+            }
+
+            .mx-auto {
+                margin-left: auto;
+                margin-right: auto;
+            }
+
+            /* Smooth interactions */
+            a,
+            button {
+                transition: all 0.2s ease;
+            }
+        </style>
+    </head>
+    <body>
+        <!-- Header -->
+        <header class="header">
+            <div class="container">
+                <div
+                    style="
+                        display: flex;
+                        justify-content: space-between;
+                        align-items: center;
+                    "
+                >
+                    <a href="#" class="logo brand">CalStack</a>
+                    <a href="/login" class="btn-primary">Sign In</a>
+                </div>
+            </div>
+        </header>
+
+        <!-- Hero -->
+        <section class="hero">
+            <div class="container">
+                <div class="text-center">
+                    <h1>Find time that works<br />for everyone</h1>
+                    <p class="lead mx-auto">
+                        CalStack analyzes your team's calendars to automatically
+                        find mutual availability and schedule meetings without
+                        the back-and-forth.
+                    </p>
+                    <div class="buttons">
+                        <a href="/login" class="btn-primary btn-lg"
+                            >Get Started Free</a
+                        >
+                        <a href="#how" class="btn-outline btn-lg"
+                            >See How It Works</a
+                        >
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Features -->
+        <section class="section section-alt">
+            <div class="container">
+                <div class="text-center">
+                    <h2 class="section-title">
+                        Everything you need to schedule smarter
+                    </h2>
+                    <p class="section-subtitle">
+                        Stop playing calendar tetris. Let CalStack do the heavy
+                        lifting.
+                    </p>
+                </div>
+
+                <div class="features-grid">
+                    <div class="feature">
+                        <h3>Calendar Integration</h3>
+                        <p>
+                            Seamlessly connects with Google Calendar, Outlook,
+                            and Apple iCal to see real-time availability without
+                            accessing private event details.
+                        </p>
+                    </div>
+
+                    <div class="feature">
+                        <h3>Smart Scheduling</h3>
+                        <p>
+                            Our algorithm automatically finds when everyone is
+                            free, considering time zones, working hours, and
+                            meeting preferences.
+                        </p>
+                    </div>
+
+                    <div class="feature">
+                        <h3>Team Voting</h3>
+                        <p>
+                            When multiple time slots work, team members vote on
+                            their preference. The most popular option wins
+                            automatically.
+                        </p>
+                    </div>
+
+                    <div class="feature">
+                        <h3>Automatic Invites</h3>
+                        <p>
+                            Calendar invitations are sent automatically once a
+                            meeting time is confirmed. No manual work required.
+                        </p>
+                    </div>
+
+                    <div class="feature">
+                        <h3>Easy Team Management</h3>
+                        <p>
+                            Create teams with simple invite codes. Add or remove
+                            members as your organization grows and changes.
+                        </p>
+                    </div>
+
+                    <div class="feature">
+                        <h3>Instant Results</h3>
+                        <p>
+                            Get meeting suggestions in seconds, not hours. See
+                            exactly when your team is available for the next 7
+                            days.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- How It Works -->
+        <section id="how" class="section">
+            <div class="container">
+                <div class="text-center">
+                    <h2 class="section-title">How CalStack works</h2>
+                    <p class="section-subtitle">
+                        Schedule your next team meeting in under 2 minutes
+                    </p>
+                </div>
+
+                <div class="steps-grid">
+                    <div class="step">
+                        <div class="step-number">1</div>
+                        <h4>Connect Your Calendar</h4>
+                        <p>
+                            Sign in with Google to securely connect your
+                            calendar. We only read availability, never private
+                            event details.
+                        </p>
+                    </div>
+
+                    <div class="step">
+                        <div class="step-number">2</div>
+                        <h4>Create a Team</h4>
+                        <p>
+                            Add team members using simple invite codes.
+                            Everyone's calendar syncs automatically when they
+                            join.
+                        </p>
+                    </div>
+
+                    <div class="step">
+                        <div class="step-number">3</div>
+                        <h4>Schedule Meetings</h4>
+                        <p>
+                            Click "Schedule Meeting" and CalStack instantly
+                            shows when everyone is free. Choose duration and
+                            preferences.
+                        </p>
+                    </div>
+
+                    <div class="step">
+                        <div class="step-number">4</div>
+                        <h4>Vote and Confirm</h4>
+                        <p>
+                            Team members vote on preferred times. Winners get
+                            automatic calendar invites sent to all participants.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- CTA -->
+        <section class="cta">
+            <div class="container text-center">
+                <h2>Ready to save hours every week?</h2>
+                <p>
+                    Join teams already using CalStack to eliminate scheduling
+                    headaches.
+                </p>
+                <a href="/login" class="btn-primary btn-lg"
+                    >Start Using CalStack</a
+                >
+            </div>
+        </section>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <div class="container">
+                <div class="logo brand">CalStack</div>
+                <p>Smart team scheduling that actually works</p>
+            </div>
+        </footer>
+
+        <script>
+            // Smooth scrolling
+            document.querySelectorAll('a[href^="#"]').forEach((anchor) => {
+                anchor.addEventListener("click", function (e) {
+                    e.preventDefault();
+                    const target = document.querySelector(
+                        this.getAttribute("href"),
+                    );
+                    if (target) {
+                        target.scrollIntoView({ behavior: "smooth" });
+                    }
+                });
+            });
+        </script>
+    </body>
+</html>

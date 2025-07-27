@@ -1,42 +1,221 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
-<head>
-    <title>Create Team</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        body { background: #f4f6fa; }
-        .home-card {
-            max-width: 500px;
-            margin: 60px auto;
-            padding: 2.5rem 2rem;
-            background: #fff;
-            border-radius: 18px;
-            box-shadow: 0 4px 24px rgba(0,0,0,0.09);
-        }
-        .brand {
-            font-size: 2rem;
-            font-weight: 700;
-            color: #007bff;
-            margin-bottom: 0.5rem;
-        }
-    </style>
-</head>
-<body>
-    <div class="home-card">
-        <div class="brand">CalStack</div>
-        <h3 class="mb-4">Create a New Team</h3>
-        <form method="post">
-            <div class="mb-3">
-                <label class="form-label">Team Name</label>
-                <input type="text" name="team_name" class="form-control" required>
+    <head>
+        <title>CalStack - Create Team</title>
+        <link
+            href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
+            rel="stylesheet"
+        />
+        <style>
+            :root {
+                --black: #000000;
+                --white: #ffffff;
+                --gray-50: #fafafa;
+                --gray-100: #f5f5f5;
+                --gray-200: #e5e5e5;
+                --gray-400: #a3a3a3;
+                --gray-600: #525252;
+                --gray-900: #171717;
+            }
+
+            * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+            }
+
+            body {
+                font-family:
+                    "Inter",
+                    -apple-system,
+                    BlinkMacSystemFont,
+                    "Segoe UI",
+                    sans-serif;
+                line-height: 1.6;
+                color: var(--black);
+                background: var(--gray-50);
+                font-feature-settings: "cv01", "cv03", "cv04", "cv11";
+                -webkit-font-smoothing: antialiased;
+                -moz-osx-font-smoothing: grayscale;
+            }
+
+            .brand {
+                font-family: "Inter", sans-serif;
+                font-weight: 600;
+                letter-spacing: -0.02em;
+            }
+
+            .create-card {
+                max-width: 540px;
+                margin: 60px auto;
+                padding: 3rem 2.5rem;
+                background: var(--white);
+                border-radius: 16px;
+                box-shadow: 0 4px 32px rgba(0, 0, 0, 0.08);
+            }
+
+            .header {
+                text-align: center;
+                margin-bottom: 2.5rem;
+            }
+
+            .logo {
+                font-size: 1.75rem;
+                color: var(--black);
+                margin-bottom: 0.5rem;
+            }
+
+            .page-title {
+                font-size: 1.5rem;
+                font-weight: 600;
+                color: var(--black);
+                margin-bottom: 0.5rem;
+                letter-spacing: -0.01em;
+            }
+
+            .form-group {
+                margin-bottom: 1.5rem;
+            }
+
+            .form-label {
+                display: block;
+                font-weight: 500;
+                font-size: 0.875rem;
+                margin-bottom: 0.5rem;
+                color: var(--black);
+            }
+
+            .form-control {
+                width: 100%;
+                padding: 0.875rem;
+                border: 1px solid var(--gray-200);
+                border-radius: 8px;
+                font-size: 0.875rem;
+                background: var(--white);
+                transition: all 0.2s ease;
+            }
+
+            .form-control:focus {
+                outline: none;
+                border-color: var(--black);
+                box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.1);
+            }
+
+            .form-control::placeholder {
+                color: var(--gray-400);
+            }
+
+            .form-text {
+                font-size: 0.75rem;
+                color: var(--gray-600);
+                margin-top: 0.25rem;
+            }
+
+            .btn {
+                display: inline-block;
+                padding: 0.875rem 1.5rem;
+                border-radius: 8px;
+                font-weight: 500;
+                font-size: 0.875rem;
+                text-decoration: none;
+                border: none;
+                cursor: pointer;
+                transition: all 0.2s ease;
+                width: 100%;
+                margin-bottom: 0.75rem;
+                text-align: center;
+            }
+
+            .btn-primary {
+                background: var(--black);
+                color: var(--white);
+                border: 1px solid var(--black);
+            }
+
+            .btn-primary:hover {
+                background: var(--gray-900);
+                transform: translateY(-1px);
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            }
+
+            .btn-link {
+                background: transparent;
+                color: var(--gray-600);
+                border: 1px solid var(--gray-200);
+            }
+
+            .btn-link:hover {
+                background: var(--gray-50);
+                border-color: var(--gray-400);
+                color: var(--black);
+                text-decoration: none;
+                transform: translateY(-1px);
+                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            }
+
+            .alert {
+                padding: 0.875rem;
+                border-radius: 8px;
+                margin-bottom: 1.5rem;
+                font-size: 0.875rem;
+            }
+
+            .alert-danger {
+                background: #fef2f2;
+                color: #dc2626;
+                border: 1px solid #fecaca;
+            }
+
+            .back-link {
+                text-align: center;
+                margin-top: 1rem;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="create-card">
+            <div class="header">
+                <div class="logo brand">CalStack</div>
+                <h1 class="page-title">Create a New Team</h1>
             </div>
-            <div class="mb-4">
-                <label class="form-label">Invite Members <small class="text-muted">(comma-separated emails)</small></label>
-                <input type="text" name="invited_emails" class="form-control" placeholder="email1@example.com, email2@example.com">
-            </div>
-            <button type="submit" class="btn btn-primary w-100 mb-2">Create Team</button>
-            <a href="{{ url_for('home') }}" class="btn btn-link w-100">Back to Home</a>
-        </form>
-    </div>
-</body>
+
+            {% if error %}
+            <div class="alert alert-danger">{{ error }}</div>
+            {% endif %}
+
+            <form method="post">
+                <div class="form-group">
+                    <label class="form-label">Team Name</label>
+                    <input
+                        type="text"
+                        name="team_name"
+                        class="form-control"
+                        placeholder="Enter your team name"
+                        required
+                    />
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Invite Members</label>
+                    <input
+                        type="text"
+                        name="invited_emails"
+                        class="form-control"
+                        placeholder="email1@example.com, email2@example.com"
+                    />
+                    <div class="form-text">
+                        Optional: Enter comma-separated email addresses to
+                        invite team members
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-primary">
+                    Create Team
+                </button>
+                <a href="{{ url_for('home') }}" class="btn btn-link"
+                    >Back to Home</a
+                >
+            </form>
+        </div>
+    </body>
 </html>
