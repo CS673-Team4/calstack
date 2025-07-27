@@ -49,8 +49,13 @@ jobs:
         cp .env.test .env
         echo "MONGO_URI=mongodb://localhost:27017/calstack_test" >> .env
         echo "SENDGRID_API_KEY=test_disabled" >> .env
-        echo "GOOGLE_CLIENT_ID=test_disabled" >> .env
         echo "MS_CLIENT_ID=test_disabled" >> .env
+        echo "MS_CLIENT_SECRET=test_disabled" >> .env
+        echo "AZURE_APPLICATION_ID=test_disabled" >> .env
+        echo "AZURE_DIRECTORY_ID=test_disabled" >> .env
+        echo "FLASK_SECRET_KEY=test-secret-key-for-ci-testing-only" >> .env
+        # Create mock client_secret.json for Google OAuth
+        echo '{"web":{"client_id":"test_client_id","client_secret":"test_client_secret","auth_uri":"https://accounts.google.com/o/oauth2/auth","token_uri":"https://oauth2.googleapis.com/token"}}' > client_secret.json
     
     - name: Wait for MongoDB
       run: |
