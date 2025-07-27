@@ -517,6 +517,3 @@ s1._domainkey.yourdomain.com → s1.domainkey.u1234567.wl.sendgrid.net
 s2._domainkey.yourdomain.com → s2.domainkey.u1234567.wl.sendgrid.net
 em1234.yourdomain.com → u1234567.wl.sendgrid.net
 ```
-
-## License
-This project is licensed under the MIT License - see the LICENSE file for details.
