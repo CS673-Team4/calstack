@@ -15,13 +15,28 @@ A productivity app that intelligently finds mutually available time slots for gr
 
 ## Quick Start
 
-For a quick development setup:
+### Option 1: Quick Development Setup (Recommended for Testing)
+
+For immediate testing without OAuth setup:
 
 ```bash
 git clone https://github.com/CS673-Team4/calstack.git
 cd calstack
 pip install -r requirements.txt
+
+# Copy mock configuration files
+cp .env.test .env
+cp client_secret_mock.json client_secret.json
+
+# Start the application
+python app.py
 ```
+
+**Note**: This setup uses mock OAuth credentials. Google/Outlook login won't work, but you can test the manual login system and other features.
+
+### Option 2: Full Production Setup
+
+For complete OAuth integration:
 
 ### Environment Configuration
 
