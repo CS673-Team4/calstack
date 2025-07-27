@@ -366,7 +366,7 @@ def send_meeting_invites(meeting, participants, team_name="Your Team"):
             f"This invite should appear in your calendar."
         )
         message = Mail(
-            from_email=Email('scheduler@calstack.com', team_name),
+            from_email=Email('scheduler@chronoconqueror.com', team_name),
             to_emails=To(email),
             subject=subject,
             plain_text_content=body
@@ -524,7 +524,7 @@ def create_team():
                     <br><p>Best,<br>The Calstack Team</p>
                     """
                     message = Mail(
-                        from_email=Email('scheduler@calstack.com', 'Calstack'),
+                        from_email=Email('scheduler@chronoconqueror.com', 'Calstack'),
                         to_emails=To(email),
                         subject=subject,
                         html_content=html_content
@@ -775,7 +775,7 @@ def invite_members(team_id):
         <br><p>Best,<br>The Calstack Team</p>
         """
         message = Mail(
-            from_email=Email('scheduler@calstack.com', 'Calstack'),
+            from_email=Email('scheduler@chronoconqueror.com', 'Calstack'),
             to_emails=To(email),
             subject=subject,
             html_content=html_content
