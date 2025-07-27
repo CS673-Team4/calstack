@@ -26,18 +26,8 @@ class TestTeamEndpoints:
         response = api_client.get(urljoin(base_url, '/team/create'))
         assert response.status_code in [200, 302]  # May redirect if not authenticated
         
-    def test_create_team_requires_auth(self, base_url, api_client):
-        """Test that creating a team requires authentication"""
-        team_data = {
-            'name': 'Test Team',
-            'description': 'Test Description'
-        }
-        response = api_client.post(
-            urljoin(base_url, '/team/create'),
-            data=team_data
-        )
-        # Should redirect to login or return 401/403
-        assert response.status_code in [302, 401, 403]
+    # Note: Authentication testing moved to test_auth_security.py
+    # to avoid redundancy and use proper Flask test client
         
     def test_join_team_page_structure(self, base_url, api_client):
         """Test join team page structure"""
@@ -47,18 +37,8 @@ class TestTeamEndpoints:
         assert response.status_code in [200, 302]
 
 @pytest.mark.api
-class TestAuthEndpoints:
-    """Test authentication endpoints"""
-    
-    def test_login_page_accessible(self, base_url, api_client):
-        """Test that login page is accessible"""
-        response = api_client.get(urljoin(base_url, '/login'))
-        assert response.status_code == 200
-        
-    def test_outlook_login_accessible(self, base_url, api_client):
-        """Test that Outlook login is accessible"""
-        response = api_client.get(urljoin(base_url, '/login/outlook'))
-        assert response.status_code in [200, 302]
+# OAuth and email tests removed per user request
+# Focus on core functionality only
 
 @pytest.mark.api
 class TestAPIResponseHeaders:

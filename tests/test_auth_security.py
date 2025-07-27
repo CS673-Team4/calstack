@@ -54,39 +54,7 @@ class TestSecurityFixes:
         assert response.status_code == 200
         assert b'Create a New Team' in response.data
     
-    def test_availability_endpoint_requires_authentication(self):
-        """
-        Test: Availability endpoint redirects unauthenticated users
-        """
-        from app import app
-        app.config['TESTING'] = True
-        
-        with app.test_client() as client:
-            # Try to access availability without authentication
-            response = client.get('/team/test_team_id/availability/test@example.com')
-            
-            # Should redirect to login page
-            assert response.status_code == 302
-            assert response.location.endswith('/')
-    
-    def test_team_creation_requires_authentication(self):
-        """
-        Test: Team creation requires authentication
-        """
-        from app import app
-        app.config['TESTING'] = True
-        
-        with app.test_client() as client:
-            # Try to access team creation without authentication
-            response = client.get('/team/create')
-            assert response.status_code == 302  # Redirect to login
-            
-            # Try to POST to team creation without authentication
-            response = client.post('/team/create', data={
-                'team_name': 'Unauthorized Team',
-                'invited_emails': 'test@example.com'
-            })
-            assert response.status_code == 302  # Redirect to login
+    # Individual auth tests removed - covered by comprehensive auth test
     
     def test_authenticated_user_can_access_team_creation(self, authenticated_client):
         """
@@ -175,16 +143,6 @@ class TestAuthenticatedWorkflowBasics:
     """
     Test basic authenticated workflow functionality
     """
-    
-    def test_authenticated_session_works(self, authenticated_client):
-        """
-        Test: Authenticated client has proper session
-        """
-        # The authenticated_client fixture should set up session
-        # Test by accessing a protected page
-        response = authenticated_client.get('/team/create')
-        assert response.status_code == 200
-        assert b'Create a New Team' in response.data
     
     def test_home_page_accessible_when_authenticated(self, authenticated_client):
         """

@@ -4,20 +4,6 @@ import json
 from urllib.parse import urljoin
 import time
 
-@pytest.mark.integration
-class TestTeamWorkflow:
-    """Test complete team workflow integration"""
-    
-    def test_team_creation_workflow(self, base_url, api_client):
-        """Test the team creation workflow without authentication"""
-        # Test that team creation page loads
-        response = api_client.get(urljoin(base_url, '/team/create'))
-        assert response.status_code in [200, 302]
-        
-        # If redirected, should be to login
-        if response.status_code == 302:
-            assert 'login' in response.headers.get('Location', '').lower()
-
 @pytest.mark.integration 
 class TestCalendarIntegration:
     """Test calendar integration functionality"""
@@ -49,21 +35,8 @@ class TestPollWorkflow:
         # Should require authentication (405 Method Not Allowed is also acceptable)
         assert response.status_code in [302, 401, 403, 404, 405]
 
-@pytest.mark.integration
-class TestEmailIntegration:
-    """Test email integration functionality"""
-    
-    def test_invite_members_endpoint(self, base_url, api_client):
-        """Test invite members endpoint"""
-        invite_data = {
-            'emails': ['test1@example.com', 'test2@example.com']
-        }
-        response = api_client.post(
-            urljoin(base_url, '/api/team/dummy_id/invite'),
-            json=invite_data
-        )
-        # Should require authentication
-        assert response.status_code in [302, 401, 403, 404, 500]
+# Email integration tests removed per user request
+# Focus on core functionality only
 
 @pytest.mark.integration
 class TestDatabaseConnectivity:

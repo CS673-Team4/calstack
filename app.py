@@ -146,6 +146,9 @@ from bson import ObjectId
 
 @app.route('/api/team/<team_id>/polls', methods=['GET'])
 def get_team_polls(team_id):
+    user_email = session.get('email')
+    if not user_email:
+        return jsonify({'error': 'Authentication required'}), 401
     # Return all open polls for a team
     polls = list(polls_col.find({'team_id': team_id, 'status': 'open'}))
     for poll in polls:
@@ -676,6 +679,9 @@ def legacy_vote_poll(poll_id):
 
 @app.route('/team/<team_id>/polls')
 def get_team_polls_page(team_id):
+    user_email = session.get('email')
+    if not user_email:
+        return redirect(url_for('index'))
     polls = list(polls_col.find({'team_id': team_id, 'status': 'open'}))
     for poll in polls:
         poll['_id'] = str(poll['_id'])
@@ -683,6 +689,9 @@ def get_team_polls_page(team_id):
 
 @app.route('/team/<team_id>/meetings')
 def get_team_meetings(team_id):
+    user_email = session.get('email')
+    if not user_email:
+        return redirect(url_for('index'))
     meetings_col = db.meetings
     meetings = list(meetings_col.find({'team_id': team_id}))
     for meeting in meetings:
