@@ -456,9 +456,10 @@ def delete_meeting(team_id, meeting_id):
 # Path to client secret downloaded from Google Console
 GOOGLE_CLIENT_SECRETS_FILE = "client_secret.json"
 
-# Required scope for free/busy calendar read
+# Required scope for free/busy calendar read and timezone
 SCOPES = [
-    'https://www.googleapis.com/auth/calendar.readonly',
+    'https://www.googleapis.com/auth/calendar.events.freebusy',
+    'https://www.googleapis.com/auth/calendar.settings.readonly',
     'openid',
     'https://www.googleapis.com/auth/userinfo.email',
     'https://www.googleapis.com/auth/userinfo.profile'
@@ -1147,10 +1148,16 @@ def oauth2callback():
         return "Could not retrieve email from Google profile.", 400
     session['email'] = email
 
-    # Fetch user's timezone from Google Calendar API
-    calendar_service = g_build('calendar', 'v3', credentials=creds)
-    tz_settings = calendar_service.settings().get(setting='timezone').execute()
-    user_tz = tz_settings.get('value', 'UTC')
+    # Fetch user's timezone from Google Calendar API (with fallback)
+    user_tz = 'UTC'  # Default fallback
+    try:
+        calendar_service = g_build('calendar', 'v3', credentials=creds)
+        tz_settings = calendar_service.settings().get(setting='timezone').execute()
+        user_tz = tz_settings.get('value', 'UTC')
+        print(f"[DEBUG] Successfully fetched timezone: {user_tz}")
+    except Exception as e:
+        print(f"[DEBUG] Could not fetch timezone (using UTC): {e}")
+        user_tz = 'UTC'
 
     # Upsert user with timezone
     users_col.update_one({'email': email}, {'$set': {'name': email.split('@')[0], 'timezone': user_tz}}, upsert=True)
