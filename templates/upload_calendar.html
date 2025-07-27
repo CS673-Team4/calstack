@@ -1,0 +1,205 @@
+<!doctype html>
+<html>
+<head>
+    <title>CalStack - Upload Calendar</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background: #f4f6fa; }
+        .upload-card {
+            max-width: 600px;
+            margin: 60px auto;
+            padding: 2.5rem 2rem;
+            background: #fff;
+            border-radius: 18px;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.09);
+        }
+        .brand {
+            font-size: 2.2rem;
+            font-weight: 700;
+            color: #007bff;
+            margin-bottom: 0.5rem;
+            text-align: center;
+        }
+        .subtitle {
+            color: #555;
+            font-size: 1.1rem;
+            margin-bottom: 2rem;
+            text-align: center;
+        }
+        .upload-zone {
+            border: 2px dashed #007bff;
+            border-radius: 12px;
+            padding: 3rem 2rem;
+            text-align: center;
+            background: #f8f9ff;
+            margin-bottom: 2rem;
+            transition: all 0.3s ease;
+        }
+        .upload-zone:hover {
+            border-color: #0056b3;
+            background: #f0f4ff;
+        }
+        .upload-zone.dragover {
+            border-color: #0056b3;
+            background: #e6f0ff;
+        }
+        .upload-icon {
+            font-size: 3rem;
+            color: #007bff;
+            margin-bottom: 1rem;
+        }
+        .file-input {
+            display: none;
+        }
+        .upload-btn {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 0.75rem 2rem;
+            border-radius: 8px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+        .upload-btn:hover {
+            background: #0056b3;
+        }
+        .info-section {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        .info-section h5 {
+            color: #495057;
+            margin-bottom: 1rem;
+        }
+        .info-section ul {
+            margin-bottom: 0;
+            padding-left: 1.2rem;
+        }
+        .info-section li {
+            margin-bottom: 0.5rem;
+            color: #6c757d;
+        }
+        .back-link {
+            text-align: center;
+            margin-top: 2rem;
+        }
+        .back-link a {
+            color: #007bff;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="upload-card">
+        <div class="brand">📅 Upload Calendar</div>
+        <div class="subtitle">Import your calendar to sync availability</div>
+        
+        {% if error %}
+            <div class="alert alert-danger">{{ error }}</div>
+        {% endif %}
+        
+        {% if success %}
+            <div class="alert alert-success">{{ success }}</div>
+        {% endif %}
+        
+        <form method="post" enctype="multipart/form-data" id="upload-form">
+            <div class="upload-zone" id="upload-zone">
+                <div class="upload-icon">📁</div>
+                <h4>Drop your .ics file here</h4>
+                <p class="text-muted">or click to browse</p>
+                <input type="file" name="ics_file" accept=".ics" class="file-input" id="file-input" required>
+                <button type="button" class="upload-btn" onclick="document.getElementById('file-input').click()">
+                    Choose File
+                </button>
+            </div>
+            
+            <div class="text-center">
+                <button type="submit" class="btn btn-primary btn-lg" id="submit-btn" disabled>
+                    Upload Calendar
+                </button>
+            </div>
+        </form>
+        
+        <div class="info-section">
+            <h5>📋 How to get your calendar file:</h5>
+            <ul>
+                <li><strong>Google Calendar:</strong> Settings → Import & Export → Export (download .ics file)</li>
+                <li><strong>Outlook:</strong> File → Save Calendar → Save as .ics format</li>
+                <li><strong>Apple Calendar:</strong> File → Export → Export as .ics</li>
+                <li><strong>Other apps:</strong> Look for "Export" or "Download" options in calendar settings</li>
+            </ul>
+        </div>
+        
+        <div class="info-section">
+            <h5>🔒 Privacy & Security:</h5>
+            <ul>
+                <li>Only event times are used for availability - no titles or details</li>
+                <li>Calendar data is processed securely and stored encrypted</li>
+                <li>You can re-upload anytime to update your availability</li>
+                <li>Data is automatically cleaned up after 30 days</li>
+            </ul>
+        </div>
+        
+        <div class="back-link">
+            <a href="{{ url_for('home') }}">← Back to Dashboard</a>
+        </div>
+    </div>
+
+    <script>
+        const uploadZone = document.getElementById('upload-zone');
+        const fileInput = document.getElementById('file-input');
+        const submitBtn = document.getElementById('submit-btn');
+        
+        // Handle file selection
+        fileInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                // Update visual feedback without removing the input
+                const iconDiv = uploadZone.querySelector('.upload-icon');
+                const titleElement = uploadZone.querySelector('h4');
+                const subtitleElement = uploadZone.querySelector('p');
+                
+                if (iconDiv) iconDiv.textContent = '✅';
+                if (titleElement) titleElement.textContent = `File Selected: ${file.name}`;
+                if (subtitleElement) subtitleElement.textContent = 'Ready to upload';
+                
+                submitBtn.disabled = false;
+            }
+        });
+        
+        // Handle drag and drop
+        uploadZone.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            uploadZone.classList.add('dragover');
+        });
+        
+        uploadZone.addEventListener('dragleave', function(e) {
+            e.preventDefault();
+            uploadZone.classList.remove('dragover');
+        });
+        
+        uploadZone.addEventListener('drop', function(e) {
+            e.preventDefault();
+            uploadZone.classList.remove('dragover');
+            
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                fileInput.files = files;
+                fileInput.dispatchEvent(new Event('change'));
+            }
+        });
+        
+        // Handle click on upload zone (but not on the button)
+        uploadZone.addEventListener('click', function(e) {
+            // Don't trigger file input if clicking on the Choose File button
+            if (e.target.classList.contains('upload-btn') || e.target.closest('.upload-btn')) {
+                return;
+            }
+            fileInput.click();
+        });
+    </script>
+</body>
+</html>

@@ -27,6 +27,9 @@ import datetime
 from dotenv import load_dotenv
 from pymongo import MongoClient
 from bson import ObjectId
+import bcrypt
+import re
+from werkzeug.utils import secure_filename
 
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1' #For Testing, remove this in production
 # Load environment variables from .env file
@@ -141,8 +144,154 @@ def propose_slots():
 users_col = db.users
 teams_col = db.teams
 polls_col = db.polls
+availability_col = db.availability
 
 from bson import ObjectId
+
+# --- Manual Authentication Utilities ---
+def hash_password(password):
+    """Hash a password using bcrypt"""
+    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+
+def verify_password(password, hashed):
+    """Verify a password against its hash"""
+    return bcrypt.checkpw(password.encode('utf-8'), hashed)
+
+def validate_email(email):
+    """Validate email format"""
+    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    return re.match(pattern, email) is not None
+
+def validate_password(password):
+    """Validate password strength"""
+    if len(password) < 8:
+        return False, "Password must be at least 8 characters long"
+    if not re.search(r'[A-Za-z]', password):
+        return False, "Password must contain at least one letter"
+    if not re.search(r'\d', password):
+        return False, "Password must contain at least one number"
+    return True, "Password is valid"
+
+def create_manual_user(email, password, timezone='UTC'):
+    """Create a new manual user account"""
+    # Check if user already exists
+    if users_col.find_one({'email': email}):
+        return False, "User already exists"
+    
+    # Validate inputs
+    if not validate_email(email):
+        return False, "Invalid email format"
+    
+    is_valid, message = validate_password(password)
+    if not is_valid:
+        return False, message
+    
+    # Create user
+    user_doc = {
+        'email': email,
+        'password_hash': hash_password(password),
+        'auth_method': 'manual',
+        'timezone': timezone,
+        'name': email.split('@')[0],  # Default name from email
+        'created_at': datetime.utcnow(),
+        'ics_calendar_data': []  # For future ICS upload
+    }
+    
+    try:
+        result = users_col.insert_one(user_doc)
+        return True, str(result.inserted_id)
+    except Exception as e:
+        return False, f"Error creating user: {str(e)}"
+
+def authenticate_manual_user(email, password):
+    """Authenticate a manual user"""
+    user = users_col.find_one({'email': email, 'auth_method': 'manual'})
+    if not user:
+        return False, "User not found or not a manual user"
+    
+    if verify_password(password, user['password_hash']):
+        return True, user
+    else:
+        return False, "Invalid password"
+
+# --- ICS File Processing Utilities ---
+
+def parse_ics_file(ics_content, user_timezone='UTC'):
+    """Parse ICS file content and extract busy times"""
+    try:
+        from icalendar import Calendar
+        import recurring_ical_events
+        from dateutil import tz
+        import pytz
+        
+        # Parse the ICS content
+        cal = Calendar.from_ical(ics_content)
+        
+        # Get timezone info
+        user_tz = pytz.timezone(user_timezone)
+        
+        # Extract events for next 30 days (longer than OAuth sync)
+        now = datetime.utcnow()
+        end_date = now + timedelta(days=30)
+        
+        # Get all events including recurring ones
+        events = recurring_ical_events.of(cal).between(now, end_date)
+        
+        busy_times = []
+        for event in events:
+            # Get start and end times
+            start = event.get('DTSTART')
+            end = event.get('DTEND')
+            
+            if start and end:
+                # Handle different datetime formats
+                start_dt = start.dt if hasattr(start, 'dt') else start
+                end_dt = end.dt if hasattr(end, 'dt') else end
+                
+                # Convert to datetime if it's a date
+                if hasattr(start_dt, 'date') and not hasattr(start_dt, 'hour'):
+                    # All-day event, skip for availability purposes
+                    continue
+                
+                # Ensure timezone awareness
+                if start_dt.tzinfo is None:
+                    start_dt = user_tz.localize(start_dt)
+                if end_dt.tzinfo is None:
+                    end_dt = user_tz.localize(end_dt)
+                
+                # Convert to UTC for storage
+                start_utc = start_dt.astimezone(pytz.UTC)
+                end_utc = end_dt.astimezone(pytz.UTC)
+                
+                busy_times.append({
+                    'start': start_utc.isoformat().replace('+00:00', 'Z'),
+                    'end': end_utc.isoformat().replace('+00:00', 'Z')
+                })
+        
+        return True, busy_times
+        
+    except Exception as e:
+        return False, f"Error parsing ICS file: {str(e)}"
+
+def sync_manual_user_availability(email):
+    """Sync availability for manual users using their ICS data"""
+    user = users_col.find_one({'email': email, 'auth_method': 'manual'})
+    if not user or not user.get('ics_calendar_data'):
+        return
+    
+    # Use stored ICS data as busy times
+    busy_times = user.get('ics_calendar_data', [])
+    
+    # Update availability for all user's teams
+    user_teams = teams_col.find({"members": email})
+    for team in user_teams:
+        availability_col.update_one(
+            {"team_id": str(team['_id']), "user_email": email},
+            {"$set": {"busy": busy_times}},
+            upsert=True
+        )
+    
+    print(f"Synced manual availability for {email}: {len(busy_times)} busy periods")
 
 @app.route('/api/team/<team_id>/polls', methods=['GET'])
 def get_team_polls(team_id):
@@ -386,37 +535,53 @@ def create_team():
                         print(f"Error sending invite to {email}: {e}")
         # Sync creator's availability for the new team
         creds_dict = session.get('credentials')
-        if creds_dict:
-            from google.oauth2.credentials import Credentials
-            creds = Credentials(
-                creds_dict['token'],
-                refresh_token=creds_dict.get('refresh_token'),
-                token_uri=creds_dict['token_uri'],
-                client_id=creds_dict['client_id'],
-                client_secret=creds_dict['client_secret'],
-                scopes=creds_dict['scopes']
-            )
-            # Only sync for this team
-            from googleapiclient.discovery import build as g_build
-            service = g_build('calendar', 'v3', credentials=creds)
-            import datetime
-            now = datetime.datetime.utcnow()
-            seven_days_later = now + datetime.timedelta(days=7)
-            time_min = now.isoformat() + 'Z'
-            time_max = seven_days_later.isoformat() + 'Z'
-            freebusy_query = {
-                "timeMin": time_min,
-                "timeMax": time_max,
-                "timeZone": "UTC",
-                "items": [{"id": "primary"}]
-            }
-            freebusy_result = service.freebusy().query(body=freebusy_query).execute()
-            busy = freebusy_result['calendars']['primary'].get('busy', [])
-            availability_col.update_one(
-                {"team_id": str(result.inserted_id), "user_email": user_email},
-                {"$set": {"busy": busy}},
-                upsert=True
-            )
+        # Sync availability for the creator
+        user = users_col.find_one({'email': user_email})
+        auth_method = user.get('auth_method') if user else None
+        
+        if auth_method == 'manual':
+            # Sync manual user availability using ICS data
+            if user and user.get('ics_calendar_data'):
+                busy_times = user.get('ics_calendar_data', [])
+                availability_col.update_one(
+                    {"team_id": str(result.inserted_id), "user_email": user_email},
+                    {"$set": {"busy": busy_times}},
+                    upsert=True
+                )
+                print(f"Synced manual user availability for team creation: {len(busy_times)} events")
+        else:
+            # OAuth user - use existing Google Calendar sync
+            creds_dict = session.get('credentials')
+            if creds_dict:
+                creds = Credentials(
+                    creds_dict['token'],
+                    refresh_token=creds_dict.get('refresh_token'),
+                    token_uri=creds_dict['token_uri'],
+                    client_id=creds_dict['client_id'],
+                    client_secret=creds_dict['client_secret'],
+                    scopes=creds_dict['scopes']
+                )
+                # Only sync for this team
+                from googleapiclient.discovery import build as g_build
+                service = g_build('calendar', 'v3', credentials=creds)
+                import datetime
+                now = datetime.datetime.utcnow()
+                seven_days_later = now + datetime.timedelta(days=7)
+                time_min = now.isoformat() + 'Z'
+                time_max = seven_days_later.isoformat() + 'Z'
+                freebusy_query = {
+                    "timeMin": time_min,
+                    "timeMax": time_max,
+                    "timeZone": "UTC",
+                    "items": [{"id": "primary"}]
+                }
+                freebusy_result = service.freebusy().query(body=freebusy_query).execute()
+                busy = freebusy_result['calendars']['primary'].get('busy', [])
+                availability_col.update_one(
+                    {"team_id": str(result.inserted_id), "user_email": user_email},
+                    {"$set": {"busy": busy}},
+                    upsert=True
+                )
         return redirect(url_for('team_page', team_id=str(result.inserted_id)))
     return render_template("create_team.html")
 
@@ -434,32 +599,47 @@ def join_team():
             if user_email not in team['members']:
                 teams_col.update_one({"_id": team['_id']}, {"$addToSet": {"members": user_email}})
             # Sync this user's availability for this team only
-            creds_dict = session.get('credentials')
-            if creds_dict:
-                from google.oauth2.credentials import Credentials
-                creds = Credentials(**creds_dict)
-                # Fetch and upsert availability for this team
-                from googleapiclient.discovery import build as g_build
-                service = g_build('calendar', 'v3', credentials=creds)
-                import datetime
-                now = datetime.datetime.utcnow()
-                seven_days_later = now + datetime.timedelta(days=7)
-                time_min = now.isoformat() + 'Z'
-                time_max = seven_days_later.isoformat() + 'Z'
-                freebusy_query = {
-                    "timeMin": time_min,
-                    "timeMax": time_max,
-                    "timeZone": "UTC",
-                    "items": [{"id": "primary"}]
-                }
-                freebusy_result = service.freebusy().query(body=freebusy_query).execute()
-                print("Freebusy result:", freebusy_result)
-                busy = freebusy_result['calendars']['primary'].get('busy', [])
-                availability_col.update_one(
-                    {"team_id": str(team['_id']), "user_email": user_email},
-                    {"$set": {"busy": busy}},
-                    upsert=True
-                )
+            user = users_col.find_one({'email': user_email})
+            auth_method = user.get('auth_method') if user else None
+            
+            if auth_method == 'manual':
+                # Sync manual user availability using ICS data
+                if user and user.get('ics_calendar_data'):
+                    busy_times = user.get('ics_calendar_data', [])
+                    availability_col.update_one(
+                        {"team_id": str(team['_id']), "user_email": user_email},
+                        {"$set": {"busy": busy_times}},
+                        upsert=True
+                    )
+                    print(f"Synced manual user availability for team join: {len(busy_times)} events")
+            else:
+                # OAuth user - use existing Google Calendar sync
+                creds_dict = session.get('credentials')
+                if creds_dict:
+                    from google.oauth2.credentials import Credentials
+                    creds = Credentials(**creds_dict)
+                    # Fetch and upsert availability for this team
+                    from googleapiclient.discovery import build as g_build
+                    service = g_build('calendar', 'v3', credentials=creds)
+                    import datetime
+                    now = datetime.datetime.utcnow()
+                    seven_days_later = now + datetime.timedelta(days=7)
+                    time_min = now.isoformat() + 'Z'
+                    time_max = seven_days_later.isoformat() + 'Z'
+                    freebusy_query = {
+                        "timeMin": time_min,
+                        "timeMax": time_max,
+                        "timeZone": "UTC",
+                        "items": [{"id": "primary"}]
+                    }
+                    freebusy_result = service.freebusy().query(body=freebusy_query).execute()
+                    print("Freebusy result:", freebusy_result)
+                    busy = freebusy_result['calendars']['primary'].get('busy', [])
+                    availability_col.update_one(
+                        {"team_id": str(team['_id']), "user_email": user_email},
+                        {"$set": {"busy": busy}},
+                        upsert=True
+                    )
             return redirect(url_for('team_page', team_id=str(team['_id'])))
         else:
             error = "Team code not found."
@@ -980,6 +1160,116 @@ def oauth2callback():
     sync_user_availability(email, creds)
 
     return redirect(url_for('home'))
+
+# --- Manual Authentication Routes ---
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    """User registration for manual accounts"""
+    if request.method == 'POST':
+        email = request.form.get('email', '').strip().lower()
+        password = request.form.get('password', '')
+        confirm_password = request.form.get('confirm_password', '')
+        timezone = request.form.get('timezone', 'UTC')
+        
+        # Validation
+        if not email or not password:
+            return render_template('register.html', error='Email and password are required')
+        
+        if password != confirm_password:
+            return render_template('register.html', error='Passwords do not match')
+        
+        # Create user
+        success, message = create_manual_user(email, password, timezone)
+        if success:
+            # Auto-login after successful registration
+            session['email'] = email
+            session['auth_method'] = 'manual'
+            return redirect(url_for('home'))
+        else:
+            return render_template('register.html', error=message)
+    
+    return render_template('register.html')
+
+@app.route('/login/manual', methods=['GET', 'POST'])
+def login_manual():
+    """Manual login with email/password"""
+    if request.method == 'POST':
+        email = request.form.get('email', '').strip().lower()
+        password = request.form.get('password', '')
+        
+        if not email or not password:
+            return render_template('login_manual.html', error='Email and password are required')
+        
+        # Authenticate user
+        success, result = authenticate_manual_user(email, password)
+        if success:
+            # Set session
+            session['email'] = email
+            session['auth_method'] = 'manual'
+            return redirect(url_for('home'))
+        else:
+            return render_template('login_manual.html', error=result)
+    
+    return render_template('login_manual.html')
+
+@app.route('/upload-calendar', methods=['GET', 'POST'])
+def upload_calendar():
+    """ICS file upload for manual users"""
+    user_email = session.get('email')
+    if not user_email:
+        return redirect(url_for('index'))
+    
+    # Check if user is manual auth (OAuth users don't need this)
+    user = users_col.find_one({'email': user_email})
+    if not user or user.get('auth_method') != 'manual':
+        return redirect(url_for('home'))
+    
+    if request.method == 'POST':
+        # Check if file was uploaded
+        if 'ics_file' not in request.files:
+            return render_template('upload_calendar.html', error='No file selected')
+        
+        file = request.files['ics_file']
+        if file.filename == '':
+            return render_template('upload_calendar.html', error='No file selected')
+        
+        # Validate file extension
+        if not file.filename.lower().endswith('.ics'):
+            return render_template('upload_calendar.html', error='Please upload a .ics calendar file')
+        
+        # Read and parse file content
+        try:
+            ics_content = file.read()
+            user_timezone = user.get('timezone', 'UTC')
+            
+            # Parse ICS file
+            success, result = parse_ics_file(ics_content, user_timezone)
+            if success:
+                # Update user's calendar data
+                users_col.update_one(
+                    {'email': user_email},
+                    {'$set': {'ics_calendar_data': result}}
+                )
+                
+                # Sync availability for all teams
+                sync_manual_user_availability(user_email)
+                
+                return render_template('upload_calendar.html', 
+                                     success=f'Calendar uploaded successfully! Found {len(result)} events.')
+            else:
+                return render_template('upload_calendar.html', error=result)
+                
+        except Exception as e:
+            return render_template('upload_calendar.html', error=f'Error processing file: {str(e)}')
+    
+    return render_template('upload_calendar.html')
+
+@app.route('/logout')
+def logout():
+    """Enhanced logout for all authentication methods"""
+    session.clear()
+    return redirect(url_for('index'))
 
 if __name__ == '__main__':
     app.run(host="0.0.0.0", port=5000, debug=True)
