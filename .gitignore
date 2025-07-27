@@ -2,3 +2,5 @@ client_secret.json
 .env
 test_reports
 __pycache__
+.coverage
+.coverage.*
