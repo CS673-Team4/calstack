@@ -70,7 +70,8 @@
             <div class="d-flex flex-column h-100">
                 <div class="d-flex align-items-center mb-3">
                     <h3 class="me-auto">{{ team.name }}</h3>
-                    <span class="badge bg-secondary">Invite Code: {{ team.code }}</span>
+                    <span class="badge bg-secondary me-2">Invite Code: {{ team.code }}</span>
+                    <a href="{{ url_for('logout') }}" class="btn btn-outline-secondary btn-sm">Logout</a>
                 </div>
                 <div class="avatar-row mb-4">
                     {% for member in members %}

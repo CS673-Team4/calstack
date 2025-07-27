@@ -51,7 +51,10 @@
 </head>
 <body>
     <div class="home-card">
-        <div class="brand">CalStack</div>
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <div class="brand">CalStack</div>
+            <a href="{{ url_for('logout') }}" class="btn btn-outline-secondary btn-sm">Logout</a>
+        </div>
         <div class="mb-4">Welcome! Organize your teams and meetings below.</div>
         <div class="mb-3">
             <a href="{{ url_for('create_team') }}" class="btn btn-primary btn-action">Create Team</a>
