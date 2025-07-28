@@ -690,6 +690,20 @@ from flask import request, jsonify
 @app.route('/team/<team_id>/suggest_slots', methods=['GET', 'POST'])
 def suggest_slots(team_id):
     import datetime
+    import pytz
+    
+    # Get current user's timezone for slot generation
+    user_email = session.get('email')
+    if not user_email:
+        return jsonify({'error': 'Authentication required'}), 401
+    
+    user_doc = users_col.find_one({'email': user_email})
+    user_timezone_str = user_doc.get('timezone', 'UTC') if user_doc else 'UTC'
+    try:
+        user_timezone = pytz.timezone(user_timezone_str)
+    except:
+        user_timezone = pytz.UTC
+    
     data = request.get_json() if request.method == 'POST' else {}
     # Parameters
     slot_minutes = int(data.get('duration', 60))
@@ -702,9 +716,16 @@ def suggest_slots(team_id):
             return jsonify({"error": "Team not found"}), 404
         participants = team.get('members', [])
     # JS: 0=Sun, 1=Mon, ..., 6=Sat; Python: 0=Mon, ..., 6=Sun
-    days_js = data.get('days', list(range(7)))
+    days_js = data.get('days_of_week', data.get('days', list(range(7))))
     days_py = [(d - 1) % 7 for d in days_js]  # remap JS to Python
-    end_hour = int(data.get('end_hour', 18))
+    
+    # Parse time range - default to calendar display hours (8:00-20:00)
+    hours_from = data.get('hours_from', '08:00')
+    hours_to = data.get('hours_to', '20:00')
+    start_hour = int(hours_from.split(':')[0])
+    end_hour = int(hours_to.split(':')[0])
+    avoid_work_hours = bool(data.get('avoid_work_hours', False))
+    algorithm = data.get('algorithm', 'next')  # 'next', 'split', or 'random'
     # Get all busy intervals for selected participants
     avail_docs = availability_col.find({"team_id": team_id, "user_email": {"$in": participants}})
     member_busy = {doc['user_email']: doc.get('busy', []) for doc in avail_docs}
@@ -717,17 +738,26 @@ def suggest_slots(team_id):
             datetime.datetime.fromisoformat(b['end'].replace('Z','+00:00')).astimezone(utc)
         ) for b in busy_list]
     # Define candidate slots: next 7 days, blocks of chosen duration, filtered by days/hours
-    now = datetime.datetime.now(datetime.timezone.utc).replace(minute=0, second=0, microsecond=0)
+    # Generate slots in user's timezone, then convert to UTC for storage/comparison
+    now_user_tz = datetime.datetime.now(user_timezone).replace(minute=0, second=0, microsecond=0)
     slots = []
     for day in range(7):
-        d = now + datetime.timedelta(days=day)
-        weekday = d.weekday() # 0=Mon,6=Sun
+        d_user_tz = now_user_tz + datetime.timedelta(days=day)
+        weekday = d_user_tz.weekday() # 0=Mon,6=Sun
         if weekday in days_py:
-            # Allow slots from 6am to end_hour
-            for h in range(6, end_hour):
-                slot_start = d.replace(hour=h, minute=0, tzinfo=datetime.timezone.utc)
-                slot_end = slot_start + datetime.timedelta(minutes=slot_minutes)
-                slots.append((slot_start, slot_end))
+            # Allow slots from start_hour to end_hour in user's timezone
+            for h in range(start_hour, end_hour):
+                # Skip work hours (8:00-17:00) on weekdays if avoid_work_hours is enabled
+                if avoid_work_hours and weekday < 5:  # Monday-Friday (0-4)
+                    if 8 <= h < 17:  # 8:00 AM - 4:59 PM (17:00 is 5:00 PM)
+                        continue
+                
+                slot_start_user_tz = d_user_tz.replace(hour=h, minute=0)
+                slot_end_user_tz = slot_start_user_tz + datetime.timedelta(minutes=slot_minutes)
+                # Convert to UTC for comparison with busy times
+                slot_start_utc = slot_start_user_tz.astimezone(datetime.timezone.utc)
+                slot_end_utc = slot_end_user_tz.astimezone(datetime.timezone.utc)
+                slots.append((slot_start_utc, slot_end_utc))
     # Filter slots: must be free for all selected participants
     def slot_is_free(slot):
         for user in participants:
@@ -737,12 +767,52 @@ def suggest_slots(team_id):
                     return False
         return True
     free_slots = [s for s in slots if slot_is_free(s)]
-    # Get up to 5 earliest
+    
+    # Check if no available times found
+    if not free_slots:
+        return jsonify({
+            "success": False,
+            "error": "No available times found for the selected participants and time preferences."
+        })
+    
+    # Apply algorithm selection
+    import random
+    selected_slots = []
+    
+    if algorithm == 'split':
+        # Distribute slots across different days
+        slots_by_day = {}
+        for slot_start, slot_end in free_slots:
+            day_key = slot_start.strftime('%Y-%m-%d')
+            if day_key not in slots_by_day:
+                slots_by_day[day_key] = []
+            slots_by_day[day_key].append((slot_start, slot_end))
+        
+        # Round-robin selection across days
+        days = sorted(slots_by_day.keys())
+        while len(selected_slots) < max_slots and any(slots_by_day.values()):
+            for day in days:
+                if slots_by_day[day] and len(selected_slots) < max_slots:
+                    selected_slots.append(slots_by_day[day].pop(0))
+    
+    elif algorithm == 'random':
+        # Random selection from available slots
+        selected_slots = random.sample(free_slots, min(max_slots, len(free_slots))) if free_slots else []
+    
+    else:  # 'next' (default)
+        # Chronological order (earliest first)
+        selected_slots = free_slots[:max_slots]
+    
+    # Format selected slots for response
     suggested = [{
-        "start": s[0].isoformat() + 'Z',
-        "end": s[1].isoformat() + 'Z'
-    } for s in free_slots[:max_slots]]
-    return jsonify({"suggested_slots": suggested})
+        "start": s[0].strftime('%Y-%m-%dT%H:%M:%SZ'),
+        "end": s[1].strftime('%Y-%m-%dT%H:%M:%SZ')
+    } for s in selected_slots]
+    
+    return jsonify({
+        "success": True,
+        "slots": suggested
+    })
 
 # --- Invite Members Endpoint ---
 @app.route('/api/team/<team_id>/invite', methods=['POST'])

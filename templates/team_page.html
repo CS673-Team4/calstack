@@ -363,6 +363,27 @@
                 color: var(--black);
             }
 
+            .logout-btn {
+                background: var(--white);
+                border: 1px solid var(--gray-300);
+                color: var(--gray-700);
+                padding: 0.5rem 1rem;
+                border-radius: 8px;
+                text-decoration: none;
+                font-size: 0.875rem;
+                font-weight: 500;
+                transition: all 0.2s ease;
+                box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            }
+
+            .logout-btn:hover {
+                background: var(--gray-50);
+                color: var(--gray-900);
+                border-color: var(--gray-400);
+                text-decoration: none;
+                box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+            }
+
             /* Responsive */
             @media (max-width: 768px) {
                 .team-header .d-flex {
@@ -405,7 +426,10 @@
                         class="d-flex justify-content-between align-items-center"
                     >
                         <h1 class="team-title">{{ team.name }}</h1>
-                        <span class="team-code">{{ team.code }}</span>
+                        <div class="d-flex align-items-center gap-3">
+                            <span class="team-code">{{ team.code }}</span>
+                            <a href="{{ url_for('logout') }}" class="logout-btn">Logout</a>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -612,7 +636,7 @@
                             <h6>Meeting Settings</h6>
                             <div class="row">
                                 <div class="col-md-6">
-                                    <label class="form-label">Duration:</label>
+                                    <label class="form-label" for="meeting-duration">Duration:</label>
                                     <select
                                         id="meeting-duration"
                                         class="form-select"
@@ -626,7 +650,7 @@
                                     </select>
                                 </div>
                                 <div class="col-md-6">
-                                    <label class="form-label">Algorithm:</label>
+                                    <label class="form-label" for="algorithm-select">Algorithm:</label>
                                     <select
                                         id="algorithm-select"
                                         class="form-select"
@@ -682,20 +706,20 @@
 
                             <div class="row mt-3">
                                 <div class="col-md-6">
-                                    <label class="form-label">From:</label>
+                                    <label class="form-label" for="hours-from">From:</label>
                                     <input
                                         type="time"
                                         id="hours-from"
-                                        value="06:00"
+                                        value="08:00"
                                         class="form-control"
                                     />
                                 </div>
                                 <div class="col-md-6">
-                                    <label class="form-label">To:</label>
+                                    <label class="form-label" for="hours-to">To:</label>
                                     <input
                                         type="time"
                                         id="hours-to"
-                                        value="18:00"
+                                        value="20:00"
                                         class="form-control"
                                     />
                                 </div>
@@ -752,11 +776,19 @@
         <script src="https://cdn.jsdelivr.net/npm/luxon@3.4.3/build/global/luxon.min.js"></script>
         <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
         <script>
-            // Variables from Flask/Jinja
-            var members = {{ (members or [])|tojson|safe }};
-            var user_email = {{ (user_email or "")|tojson|safe }};
-            var team = {{ (team or {'_id': ''})|tojson|safe }};
-            var user_timezone = {{ user_timezone|tojson|safe }};
+            // Variables - Get from DOM to avoid Jinja template issues
+            var members = [];
+            var user_email = "{{ user_email }}";
+            var team = {_id: "{{ team._id }}"};
+            var user_timezone = "{{ user_timezone or 'UTC' }}";
+            
+            // Extract members from DOM
+            document.querySelectorAll('.avatar').forEach(function(el) {
+                var email = el.getAttribute('data-email');
+                if (email) members.push(email);
+            });
+            
+            console.log('Initialized variables:', {members, user_email, team, user_timezone});
 
             // Modern Calendar Renderer
             function renderCalendar(busy) {
@@ -854,8 +886,8 @@
 
             // Button handlers
             $('#schedule-meeting-btn').click(function() {
-                renderParticipants(members, user_email);
-                renderDaysCheckboxes();
+                populateParticipants();
+                populateDaysOfWeek();
                 $('#schedule-step-1').show();
                 $('#schedule-step-2').hide();
                 $('#schedule-step-3').hide();
@@ -882,13 +914,415 @@
                 }
             });
 
-            // Placeholder functions for meetings and polls (your existing code can be added here)
+            // Schedule Meeting functionality
+            function populateParticipants() {
+                const container = $('#participant-checkboxes');
+                container.empty();
+                members.forEach(member => {
+                    const isCurrentUser = member === user_email;
+                    const checked = 'checked'; // All members initially selected
+                    const disabled = isCurrentUser ? 'disabled' : '';
+                    container.append(`
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" value="${member}" id="participant-${member}" ${checked} ${disabled}>
+                            <label class="form-check-label" for="participant-${member}">
+                                ${member} ${isCurrentUser ? '(You)' : ''}
+                            </label>
+                        </div>
+                    `);
+                });
+            }
+
+            function populateDaysOfWeek() {
+                const container = $('#days-checkboxes');
+                container.empty();
+                const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+                days.forEach((day, index) => {
+                    const checked = index >= 1 && index <= 5 ? 'checked' : ''; // Default to weekdays
+                    container.append(`
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" value="${index}" id="day-${index}" ${checked}>
+                            <label class="form-check-label" for="day-${index}">${day}</label>
+                        </div>
+                    `);
+                });
+            }
+
+            // Find Times button handler
+            $('#meeting-next-btn').click(function() {
+                const participants = [];
+                $('#participant-checkboxes input:checked').each(function() {
+                    participants.push($(this).val());
+                });
+
+                const selectedDays = [];
+                $('#days-checkboxes input:checked').each(function() {
+                    selectedDays.push(parseInt($(this).val()));
+                });
+
+                if (participants.length < 2) {
+                    $('#schedule-error').text('Please select at least 2 participants.').show();
+                    return;
+                }
+
+                if (selectedDays.length === 0) {
+                    $('#schedule-error').text('Please select at least one day of the week.').show();
+                    return;
+                }
+
+                $('#schedule-error').hide();
+
+                const requestData = {
+                    participants: participants,
+                    duration: parseInt($('#meeting-duration').val()),
+                    algorithm: $('#algorithm-select').val(),
+                    num_slots: parseInt($('#num-slots').val()),
+                    avoid_work_hours: $('#avoid-work-hours').is(':checked'),
+                    days_of_week: selectedDays,
+                    hours_from: $('#hours-from').val(),
+                    hours_to: $('#hours-to').val()
+                };
+
+                // Show loading state
+                $(this).prop('disabled', true).text('Finding Times...');
+
+                $.ajax({
+                    url: `/team/${team._id}/suggest_slots`,
+                    method: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify(requestData),
+                    success: function(data) {
+                        console.log('AJAX Response:', data); // Debug log
+                        if (data.success) {
+                            console.log('Slots received:', data.slots); // Debug log
+                            displaySuggestedTimes(data.slots);
+                            $('#schedule-step-1').hide();
+                            $('#schedule-step-2').show();
+                        } else {
+                            $('#schedule-error').text(data.error || 'Failed to find available times.').show();
+                        }
+                    },
+                    error: function() {
+                        $('#schedule-error').text('Error communicating with server.').show();
+                    },
+                    complete: function() {
+                        $('#meeting-next-btn').prop('disabled', false).text('Find Times');
+                    }
+                });
+            });
+
+            function displaySuggestedTimes(slots) {
+                const container = $('#suggested-times-list');
+                container.empty();
+
+                if (slots.length === 0) {
+                    container.html('<div class="alert alert-warning">No available times found. Try adjusting your criteria.</div>');
+                    return;
+                }
+
+                // Store slots globally for poll creation
+                window.currentSuggestedSlots = slots;
+                console.log('Received slots:', slots); // Debug log
+
+                slots.forEach((slot, index) => {
+                    console.log('Processing slot:', slot); // Debug log
+                    console.log('Slot start string:', slot.start, 'type:', typeof slot.start);
+                    console.log('Slot end string:', slot.end, 'type:', typeof slot.end);
+                    
+                    // Parse dates with robust error handling
+                    let startTime, endTime;
+                    try {
+                        // Ensure we have valid date strings
+                        if (!slot.start || !slot.end) {
+                            throw new Error('Missing date strings');
+                        }
+                        
+                        // Parse ISO date strings - handle both with and without 'Z'
+                        let startStr = slot.start;
+                        let endStr = slot.end;
+                        
+                        // Ensure ISO format compatibility
+                        if (!startStr.includes('T')) {
+                            throw new Error('Invalid ISO format');
+                        }
+                        
+                        const startDate = new Date(startStr);
+                        const endDate = new Date(endStr);
+                        
+                        // Check if dates are valid
+                        if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+                            throw new Error('Date parsing failed');
+                        }
+                        
+                        // Format dates properly
+                        startTime = startDate.toLocaleString('en-US', {
+                            weekday: 'short',
+                            month: 'short',
+                            day: 'numeric',
+                            hour: 'numeric',
+                            minute: '2-digit',
+                            hour12: true
+                        });
+                        endTime = endDate.toLocaleString('en-US', {
+                            hour: 'numeric',
+                            minute: '2-digit',
+                            hour12: true
+                        });
+                        
+                        console.log('Successfully parsed:', startTime, '-', endTime);
+                    } catch (error) {
+                        console.error('Date parsing error:', error, slot);
+                        startTime = 'Parse Error';
+                        endTime = 'Parse Error';
+                    }
+                    
+                    container.append(`
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="selected-slot" value="${index}" id="slot-${index}">
+                            <label class="form-check-label" for="slot-${index}">
+                                ${startTime} - ${endTime}
+                            </label>
+                        </div>
+                    `);
+                });
+            }
+
+            // Back button handler
+            $('#meeting-back-btn').click(function() {
+                $('#schedule-step-2').hide();
+                $('#schedule-step-1').show();
+            });
+
+            // Form submission handler
+            $('#suggested-times-form').submit(function(e) {
+                e.preventDefault();
+                const selectedSlots = [];
+                $('input[name="selected-slot"]:checked').each(function() {
+                    selectedSlots.push($(this).val());
+                });
+                
+                if (selectedSlots.length === 0) {
+                    alert('Please select at least one time slot.');
+                    return;
+                }
+
+                // Create poll with selected time slots
+                const submitButton = $(this).find('button[type="submit"]');
+                submitButton.prop('disabled', true).text('Creating Poll...');
+                
+                // Get the actual slot data from the displayed slots
+                const pollSlots = [];
+                selectedSlots.forEach(slotIndex => {
+                    const slotData = window.currentSuggestedSlots[slotIndex];
+                    if (slotData) {
+                        pollSlots.push({
+                            start: slotData.start,
+                            end: slotData.end
+                        });
+                    }
+                });
+                
+                $.ajax({
+                    url: `/team/${team._id}/create_poll`,
+                    method: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({ slots: pollSlots }),
+                    success: function(data) {
+                        if (data.poll_id) {
+                            // Show success step
+                            $('#schedule-step-2').hide();
+                            $('#schedule-step-3').show();
+                            
+                            // Refresh polls to show the new poll
+                            fetchPolls();
+                            
+                            // Reset form after delay
+                            setTimeout(() => {
+                                $('#scheduleMeetingModal').modal('hide');
+                                $('#schedule-step-3').hide();
+                                $('#schedule-step-1').show();
+                                submitButton.prop('disabled', false).text('Create Poll');
+                            }, 2000);
+                        } else {
+                            alert('Error creating poll: ' + (data.error || 'Unknown error'));
+                            submitButton.prop('disabled', false).text('Create Poll');
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        console.error('Error creating poll:', error);
+                        alert('Error creating poll. Please try again.');
+                        submitButton.prop('disabled', false).text('Create Poll');
+                    }
+                });
+            });
+
+            // Initialize Schedule Meeting modal
+            $('#scheduleMeetingModal').on('show.bs.modal', function() {
+                populateParticipants();
+                populateDaysOfWeek();
+            });
+
+            // Functions for meetings and polls
             function fetchMeetings() {
-                $('#meetings-list').html('<div class="empty-state">No upcoming meetings.</div>');
+                $.ajax({
+                    url: `/team/${team._id}/meetings`,
+                    method: 'GET',
+                    success: function(data) {
+                        const container = $('#meetings-list');
+                        if (data.meetings && data.meetings.length > 0) {
+                            let html = '';
+                            data.meetings.forEach(meeting => {
+                                const startTime = new Date(meeting.slot.start).toLocaleString('en-US', {
+                                    weekday: 'short', 
+                                    month: 'short', 
+                                    day: 'numeric', 
+                                    hour: 'numeric', 
+                                    minute: '2-digit', 
+                                    hour12: true
+                                });
+                                const endTime = new Date(meeting.slot.end).toLocaleString('en-US', {
+                                    hour: 'numeric', 
+                                    minute: '2-digit', 
+                                    hour12: true
+                                });
+                                
+                                html += `
+                                    <div class="card mb-3">
+                                        <div class="card-body">
+                                            <h6 class="card-title">📅 Scheduled Meeting</h6>
+                                            <p><strong>Time:</strong> ${startTime} - ${endTime}</p>
+                                            <p><strong>Attendees:</strong> ${meeting.attendees.join(', ')}</p>
+                                            ${meeting.poll_id_creator ? `<p class="text-muted small">Created by: ${meeting.poll_id_creator}</p>` : ''}
+                                            <button class="btn btn-danger btn-sm" onclick="deleteMeeting('${meeting._id}')">
+                                                Cancel Meeting
+                                            </button>
+                                        </div>
+                                    </div>
+                                `;
+                            });
+                            container.html(html);
+                        } else {
+                            container.html('<div class="empty-state">No upcoming meetings.</div>');
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        console.error('Error fetching meetings:', error);
+                        $('#meetings-list').html('<div class="alert alert-danger">Error loading meetings.</div>');
+                    }
+                });
             }
 
             function fetchPolls() {
-                $('#polls-list').html('<div class="empty-state">No open polls.</div>');
+                $.ajax({
+                    url: `/api/team/${team._id}/polls`,
+                    method: 'GET',
+                    success: function(data) {
+                        const container = $('#polls-list');
+                        // Store polls data globally for voting function
+                        window.currentPollsData = data.polls;
+                        if (data.polls && data.polls.length > 0) {
+                            let html = '';
+                            data.polls.forEach(poll => {
+                                html += `
+                                    <div class="card mb-3">
+                                        <div class="card-body">
+                                            <h6 class="card-title">📊 Meeting Poll</h6>
+                                            <p class="text-muted small">Created: ${poll.created_at ? new Date(poll.created_at).toLocaleDateString() : 'Recently'}</p>
+                                            <p><strong>Participants:</strong> ${poll.participants.join(', ')}</p>
+                                            <p><strong>Available Times:</strong></p>
+                                            <div class="mb-2">
+                                                ${poll.proposed_slots.map((slot, index) => `
+                                                    <div class="form-check">
+                                                        <input class="form-check-input" type="checkbox" id="poll-${poll._id}-slot-${index}">
+                                                        <label class="form-check-label" for="poll-${poll._id}-slot-${index}">
+                                                            ${new Date(slot.start).toLocaleString('en-US', {weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true})} - 
+                                                            ${new Date(slot.end).toLocaleString('en-US', {hour: 'numeric', minute: '2-digit', hour12: true})}
+                                                        </label>
+                                                    </div>
+                                                `).join('')}
+                                            </div>
+                                            <button class="btn btn-primary btn-sm" onclick="submitPollVote('${poll._id}')">
+                                                Submit Vote
+                                            </button>
+                                        </div>
+                                    </div>
+                                `;
+                            });
+                            container.html(html);
+                        } else {
+                            container.html('<div class="empty-state">No open polls.</div>');
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        console.error('Error fetching polls:', error);
+                        $('#polls-list').html('<div class="alert alert-danger">Error loading polls.</div>');
+                    }
+                });
+            }
+
+            // Poll voting function
+            function submitPollVote(pollId) {
+                const selectedSlots = [];
+                $(`input[id^="poll-${pollId}-slot-"]:checked`).each(function() {
+                    const slotIndex = parseInt($(this).attr('id').split('-').pop());
+                    // Get the actual slot data from the poll display
+                    const pollCard = $(this).closest('.card');
+                    const pollData = window.currentPollsData?.find(p => p._id === pollId);
+                    if (pollData && pollData.proposed_slots[slotIndex]) {
+                        selectedSlots.push(pollData.proposed_slots[slotIndex]);
+                    }
+                });
+                
+                if (selectedSlots.length === 0) {
+                    alert('Please select at least one time slot.');
+                    return;
+                }
+                
+                $.ajax({
+                    url: `/api/team/${team._id}/polls/${pollId}/vote`,
+                    method: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({ 
+                        user_email: user_email,
+                        selected_slots: selectedSlots 
+                    }),
+                    success: function(data) {
+                        if (data.success) {
+                            alert('Vote submitted successfully!');
+                            fetchPolls(); // Refresh polls
+                        } else {
+                            alert('Error submitting vote: ' + (data.error || 'Unknown error'));
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        console.error('Error submitting vote:', error);
+                        alert('Error submitting vote. Please try again.');
+                    }
+                });
+            }
+
+            // Meeting deletion function
+            function deleteMeeting(meetingId) {
+                if (!confirm('Are you sure you want to cancel this meeting?')) {
+                    return;
+                }
+                
+                $.ajax({
+                    url: `/api/team/${team._id}/meetings/${meetingId}`,
+                    method: 'DELETE',
+                    success: function(data) {
+                        if (data.success) {
+                            alert('Meeting cancelled successfully!');
+                            fetchMeetings(); // Refresh meetings list
+                        } else {
+                            alert('Error cancelling meeting: ' + (data.error || 'Unknown error'));
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        console.error('Error cancelling meeting:', error);
+                        alert('Error cancelling meeting. Please try again.');
+                    }
+                });
             }
 
             // Initialize
