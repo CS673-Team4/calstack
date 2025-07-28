@@ -4,3 +4,4 @@ test_reports
 __pycache__
 .coverage
 .coverage.*
+venv
