@@ -48,35 +48,55 @@
 </head>
 <body class="bg-light">
 <div class="container-fluid py-4">
-    <div class="row">
-        <!-- Left Panel -->
-        <div class="col-md-4 bg-white rounded shadow-sm p-4 mb-3">
+    <div class="row g-3">
+        <!-- Left Panel - Calendar -->
+        <div class="col-md-5">
+            <div class="bg-white rounded shadow-sm p-3 h-100">
+                <!-- Back to Home Button -->
+                <div class="mb-3">
+                    <a href="{{ url_for('home') }}" class="btn btn-outline-secondary btn-sm">
+                        <i class="fas fa-arrow-left"></i> Back to Home
+                    </a>
+                </div>
             <div class="d-flex flex-column align-items-center">
                 <img src="https://ui-avatars.com/api/?name={{ selected_member or user_email }}" class="profile-img mb-2" id="profile-img">
                 <h5 id="profile-name">{{ selected_member or user_email }}</h5>
             </div>
             <hr>
             <h6 class="text-center">Availability (next 7 days)</h6>
-            <div class="mb-2">
+            <div class="mb-2" id="calendar-legend">
                 <span class="badge bg-danger">Busy</span>
                 <span class="badge bg-light border ms-2">Free</span>
             </div>
-            <div id="calendar-view" class="table-responsive">
+            <div class="mb-2" id="overlay-legend" style="display: none;">
+                <div class="small">
+                    <span class="badge bg-success">All Free</span>
+                    <span class="badge bg-danger ms-1">Some/All Busy</span>
+                </div>
+                <div class="small text-muted mt-1">Team availability overlay (shows busy count)</div>
+            </div>
+            <div id="calendar-view" class="table-responsive" style="max-height: 500px; overflow-y: auto;">
                 <!-- Calendar table will be rendered here by JS -->
             </div>
+            </div>
         </div>
-        <!-- Right Panel -->
-        <div class="col-md-8">
+        <!-- Right Panel - Team Controls -->
+        <div class="col-md-7">
             <div class="d-flex flex-column h-100">
                 <div class="d-flex align-items-center mb-3">
                     <h3 class="me-auto">{{ team.name }}</h3>
                     <span class="badge bg-secondary me-2">Invite Code: {{ team.code }}</span>
                     <a href="{{ url_for('logout') }}" class="btn btn-outline-secondary btn-sm">Logout</a>
                 </div>
-                <div class="avatar-row mb-4">
-                    {% for member in members %}
-                        <img src="https://ui-avatars.com/api/?name={{ member }}" class="avatar{% if member == user_email %} selected{% endif %}" data-email="{{ member }}" title="{{ member }}">
-                    {% endfor %}
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <div class="avatar-row">
+                        {% for member in members %}
+                            <img src="https://ui-avatars.com/api/?name={{ member }}" class="avatar{% if member == user_email %} selected{% endif %}" data-email="{{ member }}" title="{{ member }}">
+                        {% endfor %}
+                    </div>
+                    <button class="btn btn-outline-primary btn-sm" id="toggle-overlay-btn" title="Toggle between individual and team overlay view">
+                        <span id="overlay-btn-text">Team Overlay</span>
+                    </button>
                 </div>
                 <button class="btn btn-primary mb-3" id="schedule-meeting-btn">Schedule Meeting</button>
                 <button class="btn btn-secondary mb-3" id="invite-members-btn">Invite Members</button>
@@ -186,6 +206,7 @@ var members = {{ (members or [])|tojson|safe }};
 var user_email = {{ (user_email or "")|tojson|safe }};
 var team = {{ (team or {'_id': ''})|tojson|safe }};
 var user_timezone = {{ user_timezone|tojson|safe }};
+console.log('DEBUG: User timezone set to:', user_timezone);
 console.log('DEBUG: team variable is', team);
 
 $(function() {
@@ -349,27 +370,25 @@ function renderCalendar(busy) {
         days.push(start.plus({ days: i }));
     }
     // Convert busy blocks to user's timezone intervals
-    // Convert busy blocks to Eastern Time intervals
     const busyIntervals = busy.map(b => Interval.fromDateTimes(
         DateTime.fromISO(b.start, { zone: 'utc' }).setZone(tz),
         DateTime.fromISO(b.end, { zone: 'utc' }).setZone(tz)
     ));
     // Build table
-    let html = '<table class="table table-bordered text-center align-middle mb-0"><thead><tr><th style="width:70px">Hour</th>';
+    let html = '<table class="table table-bordered"><thead><tr><th style="width: 60px;">Hour</th>';
     days.forEach(day => {
-        html += `<th><div>${dayNames[day.weekday % 7]}</div><div class='small text-muted'>${day.toISODate()}</div></th>`;
+        html += `<th class="text-center">${dayNames[day.weekday % 7]}<br><small>${day.toFormat('yyyy-MM-dd')}</small></th>`;
     });
     html += '</tr></thead><tbody>';
-    // 8am-8pm, 1hr blocks
-    for (let h = 8; h <= 20; h++) {
-        html += `<tr><th scope="row">${h}:00</th>`;
+    // Generate hourly rows (8:00 to 20:00 only)
+    for (let hour = 8; hour <= 20; hour++) {
+        html += `<tr><td class="text-center small">${hour.toString().padStart(2, '0')}:00</td>`;
         days.forEach(day => {
-            // Cell interval in ET
-            const blockStart = day.set({ hour: h, minute: 0, second: 0, millisecond: 0 });
+            const blockStart = day.plus({ hours: hour });
             const blockEnd = blockStart.plus({ hours: 1 });
             // Is this block busy?
             let isBusy = busyIntervals.some(intv => intv.overlaps(Interval.fromDateTimes(blockStart, blockEnd)));
-            html += `<td class="${isBusy ? 'bg-danger text-white' : ''}">${isBusy ? '<span title="Busy">●</span>' : ''}</td>`;
+            html += `<td class="${isBusy ? 'bg-danger text-white' : ''}"><span title="${isBusy ? 'Busy' : 'Free'}">${isBusy ? '●' : ''}</span></td>`;
         });
         html += '</tr>';
     }
@@ -619,9 +638,178 @@ $.getJSON('{{ url_for("suggest_slots", team_id=team._id) }}', function(data) {
 fetchPolls();
 fetchMeetings();
 
+// Global state for overlay mode
+let isOverlayMode = false;
+let overlayData = null;
+
+// Function to render overlay calendar
+function renderOverlayCalendar(data) {
+  const { DateTime, Interval } = luxon;
+  const tz = user_timezone || 'UTC';
+  // IMPORTANT: Use the exact same logic as individual calendar
+  const start = DateTime.now().setZone(tz).startOf('day');
+  const days = [];
+  const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  
+  console.log('DEBUG: Overlay calendar start date:', start.toISO());
+  console.log('DEBUG: Raw overlay data:', data);
+  console.log('DEBUG: Availability grid keys:', Object.keys(data.availability_grid || {}));
+  
+  // Show some specific backend keys for Monday
+  const mondayKeys = Object.keys(data.availability_grid || {}).filter(key => key.startsWith('1:'));
+  console.log('DEBUG: Monday backend keys (1:X):', mondayKeys);
+  
+  // Show what backend has for 1:13 and 1:14 specifically
+  if (data.availability_grid) {
+    console.log('DEBUG: Backend 1:13 data:', data.availability_grid['1:13']);
+    console.log('DEBUG: Backend 1:14 data:', data.availability_grid['1:14']);
+  }
+  
+  for (let i = 0; i < 7; i++) {
+    days.push(start.plus({ days: i }));
+  }
+  
+  let html = '<table class="table table-bordered"><thead><tr><th style="width: 60px;">Hour</th>';
+  days.forEach(day => {
+    html += `<th class="text-center">${dayNames[day.weekday % 7]}<br><small>${day.toFormat('yyyy-MM-dd')}</small></th>`;
+  });
+  html += '</tr></thead><tbody>';
+  
+  // Create hourly rows (8:00 to 20:00 only)
+  for (let hour = 8; hour <= 20; hour++) {
+    html += `<tr><td class="text-center small">${hour.toString().padStart(2, '0')}:00</td>`;
+    
+    days.forEach((day, dayIndex) => {
+      // IMPORTANT: Apply timezone conversion to match individual calendar
+      // Backend generates slots in UTC, but frontend displays in user timezone
+      // We need to map the display hour to the correct backend slot
+      
+      // Convert display hour to UTC hour for backend lookup
+      const displayTime = day.set({ hour: hour, minute: 0, second: 0 });
+      const utcTime = displayTime.toUTC();
+      const utcDay = Math.floor(utcTime.diff(start.toUTC(), 'days').days);
+      const utcHour = utcTime.hour;
+      
+      // Debug logging for first few slots
+      if (hour === 9 && dayIndex <= 1) {
+        console.log(`DEBUG: Day ${dayIndex} Hour ${hour} - Display: ${displayTime.toISO()}, UTC: ${utcTime.toISO()}, utcDay: ${utcDay}, utcHour: ${utcHour}, slotKey: ${utcDay}:${utcHour}`);
+      }
+      
+      // Get availability level using UTC-based key
+      let availabilityLevel = 'free';
+      let busyCount = 0;
+      let totalMembers = Object.keys(data.members).length;
+      
+      const slotKey = `${utcDay}:${utcHour}`;
+      
+      if (data.availability_grid && data.availability_grid[slotKey]) {
+        const slotData = data.availability_grid[slotKey];
+        availabilityLevel = slotData.availability_level;
+        busyCount = slotData.busy_count;
+      }
+      
+      // Determine cell class and content based on availability level
+      let cellClass = 'text-center';
+      let cellContent = '';
+      let title = '';
+      
+      // Debug logging for specific time slots
+      if (dayIndex === 1 && (hour === 13 || hour === 14)) {
+        console.log(`DEBUG: Day ${dayIndex} Hour ${hour} - availabilityLevel: ${availabilityLevel}, busyCount: ${busyCount}, slotKey: ${slotKey}`);
+      }
+      
+      if (availabilityLevel === 'free') {
+        cellClass += ' bg-success text-white';
+        cellContent = '●';
+        title = 'All team members are free';
+      } else if (availabilityLevel === 'partially_busy') {
+        cellClass += ' bg-danger text-white';
+        cellContent = '●';
+        title = `${busyCount} of ${totalMembers} team members are busy`;
+      } else if (availabilityLevel === 'all_busy') {
+        cellClass += ' bg-danger text-white';
+        cellContent = '●';
+        title = 'All team members are busy';
+      }
+      
+      // Debug logging for color assignment
+      if (dayIndex === 1 && (hour === 13 || hour === 14)) {
+        console.log(`DEBUG: Day ${dayIndex} Hour ${hour} - Final cellClass: ${cellClass}`);
+      }
+      
+      html += `<td class="${cellClass}" title="${title}">${cellContent}</td>`;
+    });
+    
+    html += '</tr>';
+  }
+  
+  html += '</tbody></table>';
+  $('#calendar-view').html(html);
+}
+
+// Toggle overlay calendar
+$('#toggle-overlay-btn').click(function() {
+  console.log('Overlay button clicked, current mode:', isOverlayMode);
+  if (!isOverlayMode) {
+    // Switch to overlay mode
+    console.log('Calling overlay endpoint:', '{{ url_for("get_team_overlay_availability", team_id=team._id) }}');
+    $.getJSON('{{ url_for("get_team_overlay_availability", team_id=team._id) }}', function(data) {
+      console.log('Overlay data received:', data);
+      overlayData = data;
+      isOverlayMode = true;
+      
+      // Update UI
+      $('#overlay-btn-text').text('Individual View');
+      $('#calendar-legend').hide();
+      $('#overlay-legend').show();
+      $('#profile-name').text('Team Overlay View');
+      $('#profile-img').attr('src', 'https://ui-avatars.com/api/?name=Team');
+      
+      // Hide individual legend
+      $('#individual-legend').hide();
+      
+      // Render overlay calendar
+      console.log('Rendering overlay calendar with data:', data);
+      renderOverlayCalendar(data);
+    }).fail(function(xhr, status, error) {
+      console.error('Failed to load overlay data:', status, error, xhr.responseText);
+      alert('Failed to load team overlay data.');
+    });
+  } else {
+    // Switch back to individual mode
+    isOverlayMode = false;
+    
+    // Update UI
+    $('#overlay-btn-text').text('Team Overlay');
+    $('#calendar-legend').show();
+    $('#overlay-legend').hide();
+    
+    // Restore to current user's view
+    const currentUser = '{{ user_email }}';
+    $('#profile-name').text(currentUser);
+    $('#profile-img').attr('src', 'https://ui-avatars.com/api/?name=' + currentUser);
+    
+    // Select current user's avatar
+    $('.avatar').removeClass('selected');
+    $('.avatar[data-email="' + currentUser + '"]').addClass('selected');
+    
+    // Render current user's calendar
+    renderCalendar({{ busy|tojson }});
+  }
+});
+
 // Member avatar click handler
 $('.avatar').click(function() {
   var email = $(this).data('email');
+  
+  // If in overlay mode, exit it first
+  if (isOverlayMode) {
+    isOverlayMode = false;
+    $('#overlay-btn-text').text('Team Overlay');
+    $('#calendar-legend').show();
+    $('#overlay-legend').hide();
+  }
+  
   $('.avatar').removeClass('selected');
   $(this).addClass('selected');
   // Update profile

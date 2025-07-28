@@ -686,6 +686,148 @@ def get_member_availability(team_id, email):
     busy = avail_doc['busy'] if avail_doc else []
     return {"busy": busy}
 
+@app.route('/team/<team_id>/availability/overlay')
+def get_team_overlay_availability(team_id):
+    """Get combined availability for all team members for overlay calendar view"""
+    # Security: Require authentication and team membership
+    user_email = session.get('email')
+    if not user_email:
+        return redirect(url_for('index'))
+    
+    # Verify user is member of the team
+    team = teams_col.find_one({"_id": ObjectId(team_id)})
+    if not team or user_email not in team.get('members', []):
+        return jsonify({"error": "Access denied"}), 403
+    
+    # Get availability for all team members
+    team_members = team.get('members', [])
+    overlay_data = {
+        'members': {},
+        'combined_busy': [],
+        'team_members': team_members
+    }
+    
+    for member_email in team_members:
+        # Look for busy periods in the availability collection for this specific team
+        avail_doc = availability_col.find_one({"team_id": team_id, "user_email": member_email})
+        if avail_doc and 'busy' in avail_doc:
+            overlay_data['members'][member_email] = avail_doc['busy']
+            # Debug: Show busy periods for each member
+            print(f"DEBUG: {member_email} has {len(avail_doc['busy'])} busy periods:")
+            for i, busy_period in enumerate(avail_doc['busy'][:3]):  # Show first 3
+                print(f"  Period {i}: {busy_period}")
+        else:
+            overlay_data['members'][member_email] = []
+            print(f"DEBUG: {member_email} has no busy periods for team {team_id}")
+    
+    # Calculate availability levels for each time slot
+    # This will help show how many people are busy at any given time
+    from datetime import datetime, timedelta
+    import pytz
+    
+    # Create time slots for the next 7 days (hourly slots)
+    # IMPORTANT: Use the exact same logic as the frontend individual calendar
+    # Frontend uses: DateTime.now().setZone(tz).startOf('day') in user's timezone
+    # We need to match this exactly to ensure overlay and individual calendars align
+    
+    # Get user's timezone from user document (not session)
+    user_doc = users_col.find_one({"email": user_email})
+    user_tz = user_doc.get('timezone', 'UTC') if user_doc else 'UTC'
+    user_timezone = pytz.timezone(user_tz)
+    
+    # IMPORTANT: Generate slots for the same calendar dates as frontend
+    # Frontend uses: DateTime.now().setZone(tz).startOf('day') then adds days
+    # We need to generate slots for the actual calendar dates, not timezone-shifted dates
+    now_user_tz = datetime.now(user_timezone)
+    start_user_tz = now_user_tz.replace(hour=0, minute=0, second=0, microsecond=0)
+    
+    # Get the calendar date in user timezone (this is what frontend displays)
+    start_date = start_user_tz.date()
+    # Convert to UTC midnight of the same calendar date
+    start_time = datetime.combine(start_date, datetime.min.time()).replace(tzinfo=pytz.UTC)
+    
+    print(f"DEBUG: Current time UTC: {datetime.now(pytz.UTC)}")
+    print(f"DEBUG: User timezone: {user_tz}")
+    print(f"DEBUG: Current time in user TZ: {datetime.now(user_timezone)}")
+    print(f"DEBUG: Start of day in user TZ: {start_time.astimezone(user_timezone)}")
+    print(f"DEBUG: Start time for slots (UTC): {start_time}")
+    print(f"DEBUG: Will generate slots for days: {[start_time + timedelta(days=i) for i in range(7)]}")
+    
+    # Create a simplified structure: day_hour -> busy_count
+    availability_grid = {}
+    
+    for day_offset in range(7):
+        for hour in range(24):
+            slot_start = start_time + timedelta(days=day_offset, hours=hour)
+            slot_end = slot_start + timedelta(hours=1)
+            
+            # Debug: Log first few time slots and busy period matching
+            if day_offset <= 1 and hour >= 8 and hour <= 10:
+                print(f"DEBUG: Generating slot {day_offset}:{hour} = {slot_start} to {slot_end}")
+            
+            # Count how many members are busy during this slot
+            busy_count = 0
+            for member_email in team_members:
+                member_busy = overlay_data['members'][member_email]
+                is_member_busy = False
+                
+                for busy_period in member_busy:
+                    try:
+                        # Parse the busy period times
+                        if isinstance(busy_period, dict):
+                            start_str = busy_period.get('start', '')
+                            end_str = busy_period.get('end', '')
+                        else:
+                            # Handle string format if needed
+                            continue
+                            
+                        # Handle different datetime formats
+                        if start_str.endswith('Z'):
+                            busy_start = datetime.fromisoformat(start_str.replace('Z', '+00:00'))
+                            busy_end = datetime.fromisoformat(end_str.replace('Z', '+00:00'))
+                        else:
+                            busy_start = datetime.fromisoformat(start_str)
+                            busy_end = datetime.fromisoformat(end_str)
+                            
+                        # Ensure times are in UTC for comparison
+                        if busy_start.tzinfo is None:
+                            busy_start = busy_start.replace(tzinfo=pytz.UTC)
+                        if busy_end.tzinfo is None:
+                            busy_end = busy_end.replace(tzinfo=pytz.UTC)
+                            
+                        # Check if this busy period overlaps with our time slot
+                        if busy_start < slot_end and busy_end > slot_start:
+                            is_member_busy = True
+                            # Debug: Log successful matches for key time slots (especially 17:00 and 18:00)
+                            if day_offset <= 1 and (hour >= 8 and hour <= 10 or hour >= 17 and hour <= 18):
+                                print(f"DEBUG: MATCH! {member_email} busy {day_offset}:{hour} - slot: {slot_start} to {slot_end}, busy: {busy_start} to {busy_end}")
+                            break
+                        else:
+                            # Debug: Log non-matches for slots 1:17 and 1:18 specifically
+                            if day_offset == 1 and (hour == 17 or hour == 18):
+                                print(f"DEBUG: NO MATCH {member_email} {day_offset}:{hour} - slot: {slot_start} to {slot_end}, busy: {busy_start} to {busy_end}")
+                            
+                    except (ValueError, KeyError, TypeError) as e:
+                        # Log the error for debugging
+                        print(f"Error parsing busy period for {member_email}: {e}, period: {busy_period}")
+                        continue
+                        
+                if is_member_busy:
+                    busy_count += 1
+            
+            # Use a simple key format: "day_offset:hour"
+            slot_key = f"{day_offset}:{hour}"
+            availability_grid[slot_key] = {
+                'busy_count': busy_count,
+                'total_members': len(team_members),
+                'availability_level': 'free' if busy_count == 0 else 
+                                    'partially_busy' if busy_count < len(team_members) else 'all_busy'
+            }
+    
+    overlay_data['availability_grid'] = availability_grid
+    
+    return jsonify(overlay_data)
+
 from flask import request, jsonify
 @app.route('/team/<team_id>/suggest_slots', methods=['GET', 'POST'])
 def suggest_slots(team_id):
