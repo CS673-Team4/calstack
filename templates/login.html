@@ -1,98 +1,237 @@
 <!doctype html>
 <html>
-<head>
-    <title>CalStack Login</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        body { background: #f4f6fa; }
-        .login-card {
-            max-width: 400px;
-            margin: 80px auto;
-            padding: 2.5rem 2rem;
-            background: #fff;
-            border-radius: 18px;
-            box-shadow: 0 4px 24px rgba(0,0,0,0.09);
-            text-align: center;
-        }
-        .brand {
-            font-size: 2.2rem;
-            font-weight: 700;
-            color: #007bff;
-            margin-bottom: 0.5rem;
-        }
-        .subtitle {
-            color: #555;
-            font-size: 1.1rem;
-            margin-bottom: 2rem;
-        }
-        .btn-google {
-            background: #fff;
-            color: #444;
-            border: 1px solid #ddd;
-            font-weight: 500;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.04);
-        }
-        .btn-google:hover {
-            background: #f0f0f0;
-            color: #222;
-        }
-        .divider {
-            margin: 1.5rem 0;
-            color: #999;
-            position: relative;
-        }
-        .divider::before {
-            content: '';
-            position: absolute;
-            top: 50%;
-            left: 0;
-            right: 0;
-            height: 1px;
-            background: #ddd;
-            z-index: 1;
-        }
-        .divider span {
-            background: #fff;
-            padding: 0 1rem;
-            position: relative;
-            z-index: 2;
-        }
-        .register-link {
-            margin-top: 1rem;
-            font-size: 0.9rem;
-        }
-        .register-link a {
-            color: #007bff;
-            text-decoration: none;
-        }
-    </style>
-</head>
-  <head>
-    <title>CalStack Login</title>
-  </head>
-  <body>
-    <div class="login-card">
-        <div class="brand">CalStack</div>
-        <div class="subtitle">Smarter team scheduling for everyone</div>
-        
-        <!-- Manual Login Option -->
-        <a href="{{ url_for('login_manual') }}" class="btn btn-outline-primary btn-lg w-100 mb-3">
-Login
-        </a>
-        
-        <div class="divider"><span>OR</span></div>
-        
-        <!-- OAuth Options -->
-        <a href="{{ url_for('login') }}" class="btn btn-primary btn-lg w-100 mb-2" style="background:#4285f4; color:#fff; border:none;">
-<span style="display:inline-block;width:28px;height:28px;background:#fff;border-radius:14px;margin-right:8px;vertical-align:middle;position:relative;"><img src="{{ url_for('static', filename='g.png') }}" style="height:22px;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);"></span> Sign in with Google
-        </a>
-        <a href="{{ url_for('login_outlook') }}" class="btn btn-primary btn-lg w-100 mb-2" style="background:#0072c6; color:#fff; border:none;">
-            <img src="https://upload.wikimedia.org/wikipedia/commons/4/44/Microsoft_logo.svg" style="height:20px;vertical-align:middle;margin-right:8px;"> Sign in with Outlook
-        </a>
-        
-        <div class="register-link">
-            Don't have an account? <a href="{{ url_for('register') }}">Create one</a>
+    <head>
+        <title>CalStack - Sign In</title>
+        <link
+            href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
+            rel="stylesheet"
+        />
+        <style>
+            :root {
+                --black: #000000;
+                --white: #ffffff;
+                --gray-50: #fafafa;
+                --gray-100: #f5f5f5;
+                --gray-200: #e5e5e5;
+                --gray-400: #a3a3a3;
+                --gray-600: #525252;
+                --gray-900: #171717;
+            }
+
+            * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+            }
+
+            body {
+                font-family:
+                    "Inter",
+                    -apple-system,
+                    BlinkMacSystemFont,
+                    "Segoe UI",
+                    sans-serif;
+                line-height: 1.6;
+                color: var(--black);
+                background: var(--gray-50);
+                font-feature-settings: "cv01", "cv03", "cv04", "cv11";
+                -webkit-font-smoothing: antialiased;
+                -moz-osx-font-smoothing: grayscale;
+            }
+
+            .brand {
+                font-family: "Inter", sans-serif;
+                font-weight: 600;
+                letter-spacing: -0.02em;
+            }
+
+            .login-card {
+                max-width: 420px;
+                margin: 80px auto;
+                padding: 3rem 2.5rem;
+                background: var(--white);
+                border-radius: 16px;
+                box-shadow: 0 4px 32px rgba(0, 0, 0, 0.08);
+                text-align: center;
+            }
+
+            .logo {
+                font-size: 1.75rem;
+                color: var(--black);
+                margin-bottom: 0.5rem;
+            }
+
+            .subtitle {
+                color: var(--gray-600);
+                font-size: 1rem;
+                margin-bottom: 2.5rem;
+                font-weight: 400;
+            }
+
+            .btn {
+                display: inline-block;
+                padding: 0.875rem 1.5rem;
+                border-radius: 8px;
+                font-weight: 500;
+                font-size: 0.875rem;
+                text-decoration: none;
+                border: none;
+                cursor: pointer;
+                transition: all 0.2s ease;
+                width: 100%;
+                margin-bottom: 1rem;
+            }
+
+            .btn-primary {
+                background: var(--black);
+                color: var(--white);
+                border: 1px solid var(--black);
+            }
+
+            .btn-primary:hover {
+                background: var(--gray-900);
+                transform: translateY(-1px);
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            }
+
+            .btn-outline {
+                background: transparent;
+                color: var(--gray-600);
+                border: 1px solid var(--gray-200);
+            }
+
+            .btn-outline:hover {
+                background: var(--gray-50);
+                border-color: var(--gray-400);
+                color: var(--black);
+                transform: translateY(-1px);
+                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            }
+
+            .btn-google {
+                background: #4285f4;
+                color: var(--white);
+                border: 1px solid #4285f4;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 0.5rem;
+            }
+
+            .btn-google:hover {
+                background: #3367d6;
+                border-color: #3367d6;
+                color: var(--white);
+            }
+
+            .btn-outlook {
+                background: #0072c6;
+                color: var(--white);
+                border: 1px solid #0072c6;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 0.5rem;
+            }
+
+            .btn-outlook:hover {
+                background: #005a9e;
+                border-color: #005a9e;
+                color: var(--white);
+            }
+
+            .divider {
+                margin: 2rem 0;
+                color: var(--gray-400);
+                position: relative;
+                font-size: 0.875rem;
+            }
+
+            .divider::before {
+                content: "";
+                position: absolute;
+                top: 50%;
+                left: 0;
+                right: 0;
+                height: 1px;
+                background: var(--gray-200);
+                z-index: 1;
+            }
+
+            .divider span {
+                background: var(--white);
+                padding: 0 1rem;
+                position: relative;
+                z-index: 2;
+            }
+
+            .register-link {
+                margin-top: 1.5rem;
+                font-size: 0.875rem;
+                color: var(--gray-600);
+            }
+
+            .register-link a {
+                color: var(--black);
+                text-decoration: none;
+                font-weight: 500;
+            }
+
+            .register-link a:hover {
+                text-decoration: underline;
+            }
+
+            .google-icon {
+                width: 20px;
+                height: 20px;
+                background: var(--white);
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+
+            .outlook-icon {
+                width: 20px;
+                height: 20px;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="login-card">
+            <div class="logo brand">CalStack</div>
+            <div class="subtitle">Sign in to your workspace</div>
+
+            <!-- Manual Login Option -->
+            <a href="{{ url_for('login_manual') }}" class="btn btn-outline">
+                Continue with Email
+            </a>
+
+            <div class="divider"><span>OR</span></div>
+
+            <!-- OAuth Options -->
+            <a href="{{ url_for('login') }}" class="btn btn-google">
+                <div class="google-icon">G</div>
+                Continue with Google
+            </a>
+
+            <a href="{{ url_for('login_outlook') }}" class="btn btn-outlook">
+                <svg
+                    class="outlook-icon"
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                >
+                    <path
+                        d="M7 19h10V5H7v14zm8-12v2H9V7h6zm0 3v2H9v-2h6zm0 3v2H9v-2h6z"
+                    />
+                </svg>
+                Continue with Outlook
+            </a>
+
+            <div class="register-link">
+                Don't have an account?
+                <a href="{{ url_for('register') }}">Sign up</a>
+            </div>
         </div>
-    </div>
-</body>
+    </body>
 </html>

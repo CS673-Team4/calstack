@@ -1,203 +1,390 @@
 <!doctype html>
 <html>
-<head>
-    <title>CalStack - Upload Calendar</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        body { background: #f4f6fa; }
-        .upload-card {
-            max-width: 600px;
-            margin: 60px auto;
-            padding: 2.5rem 2rem;
-            background: #fff;
-            border-radius: 18px;
-            box-shadow: 0 4px 24px rgba(0,0,0,0.09);
-        }
-        .brand {
-            font-size: 2.2rem;
-            font-weight: 700;
-            color: #007bff;
-            margin-bottom: 0.5rem;
-            text-align: center;
-        }
-        .subtitle {
-            color: #555;
-            font-size: 1.1rem;
-            margin-bottom: 2rem;
-            text-align: center;
-        }
-        .upload-zone {
-            border: 2px dashed #007bff;
-            border-radius: 12px;
-            padding: 3rem 2rem;
-            text-align: center;
-            background: #f8f9ff;
-            margin-bottom: 2rem;
-            transition: all 0.3s ease;
-        }
-        .upload-zone:hover {
-            border-color: #0056b3;
-            background: #f0f4ff;
-        }
-        .upload-zone.dragover {
-            border-color: #0056b3;
-            background: #e6f0ff;
-        }
-        .upload-icon {
-            font-size: 3rem;
-            color: #007bff;
-            margin-bottom: 1rem;
-        }
-        .file-input {
-            display: none;
-        }
-        .upload-btn {
-            background: #007bff;
-            color: white;
-            border: none;
-            padding: 0.75rem 2rem;
-            border-radius: 8px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: background 0.3s ease;
-        }
-        .upload-btn:hover {
-            background: #0056b3;
-        }
-        .info-section {
-            background: #f8f9fa;
-            border-radius: 8px;
-            padding: 1.5rem;
-            margin-bottom: 2rem;
-        }
-        .info-section h5 {
-            color: #495057;
-            margin-bottom: 1rem;
-        }
-        .info-section ul {
-            margin-bottom: 0;
-            padding-left: 1.2rem;
-        }
-        .info-section li {
-            margin-bottom: 0.5rem;
-            color: #6c757d;
-        }
-        .back-link {
-            text-align: center;
-            margin-top: 2rem;
-        }
-        .back-link a {
-            color: #007bff;
-            text-decoration: none;
-        }
-    </style>
-</head>
-<body>
-    <div class="upload-card">
-        <div class="brand">📅 Upload Calendar</div>
-        <div class="subtitle">Import your calendar to sync availability</div>
-        
-        {% if error %}
-            <div class="alert alert-danger">{{ error }}</div>
-        {% endif %}
-        
-        {% if success %}
-            <div class="alert alert-success">{{ success }}</div>
-        {% endif %}
-        
-        <form method="post" enctype="multipart/form-data" id="upload-form">
-            <div class="upload-zone" id="upload-zone">
-                <div class="upload-icon">📁</div>
-                <h4>Drop your .ics file here</h4>
-                <p class="text-muted">or click to browse</p>
-                <input type="file" name="ics_file" accept=".ics" class="file-input" id="file-input" required>
-                <button type="button" class="upload-btn" onclick="document.getElementById('file-input').click()">
-                    Choose File
-                </button>
+    <head>
+        <title>CalStack - Upload Calendar</title>
+        <link
+            href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
+            rel="stylesheet"
+        />
+        <style>
+            :root {
+                --black: #000000;
+                --white: #ffffff;
+                --gray-50: #fafafa;
+                --gray-100: #f5f5f5;
+                --gray-200: #e5e5e5;
+                --gray-400: #a3a3a3;
+                --gray-600: #525252;
+                --gray-900: #171717;
+            }
+
+            * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+            }
+
+            body {
+                font-family:
+                    "Inter",
+                    -apple-system,
+                    BlinkMacSystemFont,
+                    "Segoe UI",
+                    sans-serif;
+                line-height: 1.6;
+                color: var(--black);
+                background: var(--gray-50);
+                font-feature-settings: "cv01", "cv03", "cv04", "cv11";
+                -webkit-font-smoothing: antialiased;
+                -moz-osx-font-smoothing: grayscale;
+            }
+
+            .brand {
+                font-family: "Inter", sans-serif;
+                font-weight: 600;
+                letter-spacing: -0.02em;
+            }
+
+            .upload-card {
+                max-width: 650px;
+                margin: 60px auto;
+                padding: 3rem 2.5rem;
+                background: var(--white);
+                border-radius: 16px;
+                box-shadow: 0 4px 32px rgba(0, 0, 0, 0.08);
+            }
+
+            .header {
+                text-align: center;
+                margin-bottom: 2.5rem;
+            }
+
+            .logo {
+                font-size: 1.75rem;
+                color: var(--black);
+                margin-bottom: 0.5rem;
+            }
+
+            .page-title {
+                font-size: 1.5rem;
+                font-weight: 600;
+                color: var(--black);
+                margin-bottom: 0.5rem;
+                letter-spacing: -0.01em;
+            }
+
+            .subtitle {
+                color: var(--gray-600);
+                font-size: 1rem;
+                font-weight: 400;
+            }
+
+            .upload-zone {
+                border: 2px dashed var(--gray-200);
+                border-radius: 12px;
+                padding: 3rem 2rem;
+                text-align: center;
+                background: var(--gray-50);
+                margin-bottom: 2rem;
+                transition: all 0.2s ease;
+                cursor: pointer;
+            }
+
+            .upload-zone:hover {
+                border-color: var(--black);
+                background: var(--gray-100);
+            }
+
+            .upload-zone.dragover {
+                border-color: var(--black);
+                background: var(--gray-100);
+            }
+
+            .upload-icon {
+                font-size: 3rem;
+                margin-bottom: 1rem;
+            }
+
+            .upload-title {
+                font-size: 1.25rem;
+                font-weight: 600;
+                color: var(--black);
+                margin-bottom: 0.5rem;
+                letter-spacing: -0.01em;
+            }
+
+            .upload-subtitle {
+                color: var(--gray-600);
+                margin-bottom: 1.5rem;
+            }
+
+            .file-input {
+                display: none;
+            }
+
+            .btn {
+                display: inline-block;
+                padding: 0.875rem 1.5rem;
+                border-radius: 8px;
+                font-weight: 500;
+                font-size: 0.875rem;
+                text-decoration: none;
+                border: none;
+                cursor: pointer;
+                transition: all 0.2s ease;
+                margin-bottom: 1rem;
+            }
+
+            .btn-primary {
+                background: var(--black);
+                color: var(--white);
+                border: 1px solid var(--black);
+                width: 100%;
+            }
+
+            .btn-primary:hover {
+                background: var(--gray-900);
+                transform: translateY(-1px);
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            }
+
+            .btn-primary:disabled {
+                background: var(--gray-200);
+                color: var(--gray-400);
+                border-color: var(--gray-200);
+                transform: none;
+                box-shadow: none;
+                cursor: not-allowed;
+            }
+
+            .btn-outline {
+                background: transparent;
+                color: var(--gray-600);
+                border: 1px solid var(--gray-200);
+            }
+
+            .btn-outline:hover {
+                background: var(--gray-50);
+                border-color: var(--gray-400);
+                color: var(--black);
+                transform: translateY(-1px);
+                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            }
+
+            .info-section {
+                background: var(--gray-50);
+                border-radius: 12px;
+                padding: 1.5rem;
+                margin-bottom: 2rem;
+                border: 1px solid var(--gray-200);
+            }
+
+            .info-section h5 {
+                color: var(--black);
+                margin-bottom: 1rem;
+                font-weight: 600;
+                font-size: 1rem;
+            }
+
+            .info-section ul {
+                margin-bottom: 0;
+                padding-left: 1.2rem;
+            }
+
+            .info-section li {
+                margin-bottom: 0.5rem;
+                color: var(--gray-600);
+                font-size: 0.875rem;
+            }
+
+            .info-section li strong {
+                color: var(--black);
+                font-weight: 500;
+            }
+
+            .back-link {
+                text-align: center;
+                margin-top: 2rem;
+            }
+
+            .back-link a {
+                color: var(--gray-600);
+                text-decoration: none;
+                font-size: 0.875rem;
+            }
+
+            .back-link a:hover {
+                color: var(--black);
+                text-decoration: underline;
+            }
+
+            .alert {
+                padding: 0.875rem;
+                border-radius: 8px;
+                margin-bottom: 1.5rem;
+                font-size: 0.875rem;
+            }
+
+            .alert-danger {
+                background: #fef2f2;
+                color: #dc2626;
+                border: 1px solid #fecaca;
+            }
+
+            .alert-success {
+                background: #f0fdf4;
+                color: #16a34a;
+                border: 1px solid #bbf7d0;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="upload-card">
+            <div class="header">
+                <div class="logo brand">CalStack</div>
+                <h1 class="page-title">Upload Calendar</h1>
+                <div class="subtitle">
+                    Import your calendar to sync availability
+                </div>
             </div>
-            
-            <div class="text-center">
-                <button type="submit" class="btn btn-primary btn-lg" id="submit-btn" disabled>
+
+            {% if error %}
+            <div class="alert alert-danger">{{ error }}</div>
+            {% endif %} {% if success %}
+            <div class="alert alert-success">{{ success }}</div>
+            {% endif %}
+
+            <form method="post" enctype="multipart/form-data" id="upload-form">
+                <div class="upload-zone" id="upload-zone">
+                    <div class="upload-icon">📁</div>
+                    <h4 class="upload-title">Drop your .ics file here</h4>
+                    <p class="upload-subtitle">or click to browse</p>
+                    <input
+                        type="file"
+                        name="ics_file"
+                        accept=".ics"
+                        class="file-input"
+                        id="file-input"
+                        required
+                    />
+                    <button
+                        type="button"
+                        class="btn btn-outline"
+                        onclick="document.getElementById('file-input').click()"
+                    >
+                        Choose File
+                    </button>
+                </div>
+
+                <button
+                    type="submit"
+                    class="btn btn-primary"
+                    id="submit-btn"
+                    disabled
+                >
                     Upload Calendar
                 </button>
-            </div>
-        </form>
-        
-        <div class="info-section">
-            <h5>📋 How to get your calendar file:</h5>
-            <ul>
-                <li><strong>Google Calendar:</strong> Settings → Import & Export → Export (download .ics file)</li>
-                <li><strong>Outlook:</strong> File → Save Calendar → Save as .ics format</li>
-                <li><strong>Apple Calendar:</strong> File → Export → Export as .ics</li>
-                <li><strong>Other apps:</strong> Look for "Export" or "Download" options in calendar settings</li>
-            </ul>
-        </div>
-        
-        <div class="info-section">
-            <h5>🔒 Privacy & Security:</h5>
-            <ul>
-                <li>Only event times are used for availability - no titles or details</li>
-                <li>You can re-upload anytime to update your availability</li>
-            </ul>
-        </div>
-        
-        <div class="back-link">
-            <a href="{{ url_for('home') }}">← Back to Dashboard</a>
-        </div>
-    </div>
+            </form>
 
-    <script>
-        const uploadZone = document.getElementById('upload-zone');
-        const fileInput = document.getElementById('file-input');
-        const submitBtn = document.getElementById('submit-btn');
-        
-        // Handle file selection
-        fileInput.addEventListener('change', function(e) {
-            const file = e.target.files[0];
-            if (file) {
-                // Update visual feedback without removing the input
-                const iconDiv = uploadZone.querySelector('.upload-icon');
-                const titleElement = uploadZone.querySelector('h4');
-                const subtitleElement = uploadZone.querySelector('p');
-                
-                if (iconDiv) iconDiv.textContent = '✅';
-                if (titleElement) titleElement.textContent = `File Selected: ${file.name}`;
-                if (subtitleElement) subtitleElement.textContent = 'Ready to upload';
-                
-                submitBtn.disabled = false;
-            }
-        });
-        
-        // Handle drag and drop
-        uploadZone.addEventListener('dragover', function(e) {
-            e.preventDefault();
-            uploadZone.classList.add('dragover');
-        });
-        
-        uploadZone.addEventListener('dragleave', function(e) {
-            e.preventDefault();
-            uploadZone.classList.remove('dragover');
-        });
-        
-        uploadZone.addEventListener('drop', function(e) {
-            e.preventDefault();
-            uploadZone.classList.remove('dragover');
-            
-            const files = e.dataTransfer.files;
-            if (files.length > 0) {
-                fileInput.files = files;
-                fileInput.dispatchEvent(new Event('change'));
-            }
-        });
-        
-        // Handle click on upload zone (but not on the button)
-        uploadZone.addEventListener('click', function(e) {
-            // Don't trigger file input if clicking on the Choose File button
-            if (e.target.classList.contains('upload-btn') || e.target.closest('.upload-btn')) {
-                return;
-            }
-            fileInput.click();
-        });
-    </script>
-</body>
+            <div class="info-section">
+                <h5>📋 How to get your calendar file:</h5>
+                <ul>
+                    <li>
+                        <strong>Google Calendar:</strong> Settings → Import &
+                        Export → Export (download .ics file)
+                    </li>
+                    <li>
+                        <strong>Outlook:</strong> File → Save Calendar → Save as
+                        .ics format
+                    </li>
+                    <li>
+                        <strong>Apple Calendar:</strong> File → Export → Export
+                        as .ics
+                    </li>
+                    <li>
+                        <strong>Other apps:</strong> Look for "Export" or
+                        "Download" options in calendar settings
+                    </li>
+                </ul>
+            </div>
+
+            <div class="info-section">
+                <h5>🔒 Privacy & Security:</h5>
+                <ul>
+                    <li>
+                        Only event times are used for availability - no titles
+                        or details
+                    </li>
+                    <li>
+                        You can re-upload anytime to update your availability
+                    </li>
+                </ul>
+            </div>
+
+            <div class="back-link">
+                <a href="{{ url_for('home') }}">← Back to Dashboard</a>
+            </div>
+        </div>
+
+        <script>
+            const uploadZone = document.getElementById("upload-zone");
+            const fileInput = document.getElementById("file-input");
+            const submitBtn = document.getElementById("submit-btn");
+
+            // Handle file selection
+            fileInput.addEventListener("change", function (e) {
+                const file = e.target.files[0];
+                if (file) {
+                    // Update visual feedback without removing the input
+                    const iconDiv = uploadZone.querySelector(".upload-icon");
+                    const titleElement =
+                        uploadZone.querySelector(".upload-title");
+                    const subtitleElement =
+                        uploadZone.querySelector(".upload-subtitle");
+
+                    if (iconDiv) iconDiv.textContent = "✅";
+                    if (titleElement)
+                        titleElement.textContent = `File Selected: ${file.name}`;
+                    if (subtitleElement)
+                        subtitleElement.textContent = "Ready to upload";
+
+                    submitBtn.disabled = false;
+                }
+            });
+
+            // Handle drag and drop
+            uploadZone.addEventListener("dragover", function (e) {
+                e.preventDefault();
+                uploadZone.classList.add("dragover");
+            });
+
+            uploadZone.addEventListener("dragleave", function (e) {
+                e.preventDefault();
+                uploadZone.classList.remove("dragover");
+            });
+
+            uploadZone.addEventListener("drop", function (e) {
+                e.preventDefault();
+                uploadZone.classList.remove("dragover");
+
+                const files = e.dataTransfer.files;
+                if (files.length > 0) {
+                    fileInput.files = files;
+                    fileInput.dispatchEvent(new Event("change"));
+                }
+            });
+
+            // Handle click on upload zone (but not on the button)
+            uploadZone.addEventListener("click", function (e) {
+                // Don't trigger file input if clicking on the Choose File button
+                if (
+                    e.target.classList.contains("btn") ||
+                    e.target.closest(".btn")
+                ) {
+                    return;
+                }
+                fileInput.click();
+            });
+        </script>
+    </body>
 </html>
