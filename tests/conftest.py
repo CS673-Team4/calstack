@@ -119,8 +119,11 @@ def mock_external_services():
         def mock_get_env(key, default=None):
             env_vars = {
                 'SENDGRID_API_KEY': 'test_sendgrid_key',
-                'GOOGLE_CLIENT_ID': 'test_google_client_id',
-                'OUTLOOK_CLIENT_ID': 'test_outlook_client_id'
+                'MS_CLIENT_ID': 'test_ms_client_id',
+                'MS_CLIENT_SECRET': 'test_ms_client_secret',
+                'AZURE_APPLICATION_ID': 'test_azure_app_id',
+                'AZURE_DIRECTORY_ID': 'test_azure_dir_id',
+                'FLASK_SECRET_KEY': 'test_flask_secret_key'
             }
             return env_vars.get(key, default)
         
