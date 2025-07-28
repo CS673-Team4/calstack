@@ -447,6 +447,9 @@
                             title="{{ member }}"
                         />
                         {% endfor %}
+                        <button id="team-overlay-btn" class="btn btn-outline-secondary btn-sm" style="margin-left: 1rem;">
+                            Team Overlay
+                        </button>
                     </div>
                 </div>
 
@@ -875,11 +878,32 @@
                 $('.avatar').removeClass('selected');
                 $(this).addClass('selected');
 
+                // Update Team Overlay button to show it's not active
+                $('#team-overlay-btn').removeClass('btn-primary').addClass('btn-outline-secondary').text('Team Overlay');
+
                 $('#profile-img').attr('src', 'https://ui-avatars.com/api/?name=' + email);
                 $('#profile-name').text(email);
 
                 // Fetch and render calendar for selected member
                 $.getJSON(`/team/${team._id}/availability/${email}`, function(data) {
+                    renderCalendar(data.busy);
+                });
+            });
+
+            // Team Overlay button handler
+            $('#team-overlay-btn').click(function() {
+                // Clear individual avatar selection
+                $('.avatar').removeClass('selected');
+                
+                // Update button to show it's active
+                $(this).removeClass('btn-outline-secondary').addClass('btn-primary').text('Team Overlay (Active)');
+                
+                // Update profile to show team overlay
+                $('#profile-img').attr('src', 'https://ui-avatars.com/api/?name=Team+Overlay');
+                $('#profile-name').text('Team Overlay - All Members');
+                
+                // Fetch and render overlay calendar
+                $.getJSON(`/team/${team._id}/availability/overlay`, function(data) {
                     renderCalendar(data.busy);
                 });
             });

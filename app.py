@@ -686,6 +686,38 @@ def get_member_availability(team_id, email):
     busy = avail_doc['busy'] if avail_doc else []
     return {"busy": busy}
 
+@app.route('/team/<team_id>/availability/overlay')
+def get_team_overlay(team_id):
+    # Security: Require authentication and team membership
+    user_email = session.get('email')
+    if not user_email:
+        return redirect(url_for('index'))
+
+    # Verify user is member of the team
+    team = teams_col.find_one({"_id": ObjectId(team_id)})
+    if not team or user_email not in team.get('members', []):
+        return jsonify({"error": "Access denied"}), 403
+
+    # Get all team members' availability
+    members = team.get('members', [])
+    all_busy_slots = []
+    
+    for member_email in members:
+        avail_doc = availability_col.find_one({"team_id": team_id, "user_email": member_email})
+        if avail_doc and avail_doc.get('busy'):
+            all_busy_slots.extend(avail_doc['busy'])
+    
+    # Remove duplicates by converting to set of (start, end) tuples and back
+    unique_busy_slots = []
+    seen_slots = set()
+    for slot in all_busy_slots:
+        slot_key = (slot['start'], slot['end'])
+        if slot_key not in seen_slots:
+            seen_slots.add(slot_key)
+            unique_busy_slots.append(slot)
+    
+    return {"busy": unique_busy_slots}
+
 from flask import request, jsonify
 @app.route('/team/<team_id>/suggest_slots', methods=['GET', 'POST'])
 def suggest_slots(team_id):
